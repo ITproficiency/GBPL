@@ -1,0 +1,481 @@
+import numpy as np
+import cv2 as cv
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+from FaceMeshModule import FaceMeshGenerator
+from utils import DrawingUtils
+import os
+
+
+class BlinkCounterandEARPlot:
+    """
+    A class to detect and count eye blinks in a video using facial landmarks.
+    
+    This class processes video frames to detect faces, track eye movements,
+    calculate Eye Aspect Ratio (EAR), plot EAR, and count blinks in real-time.
+    """
+    
+    # Define facial landmark indices for eyes
+    RIGHT_EYE = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
+    LEFT_EYE = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398]
+    RIGHT_EYE_EAR = [33, 159, 158, 133, 153, 145]  # Points for EAR calculation
+    LEFT_EYE_EAR = [362, 380, 374, 263, 386, 385]  # Points for EAR calculation
+    
+    # Define colors for visualization
+    COLORS = {
+        'GREEN': {'hex': '#56f10d', 'bgr': (86, 241, 13)},
+        'BLUE': {'hex': '#0329fc', 'bgr': (30, 46, 209)},
+        'RED': {'hex': '#f70202', 'bgr': None}
+    }
+
+    def __init__(self, video_path, threshold, consec_frames, save_video=False, output_filename=None):
+        """
+        Initialize the BlinkCounter with video and detection parameters.
+        
+        Args:
+            video_path (str/int): Path to the input video file or 0 for webcam
+            threshold (float): EAR threshold for blink detection
+            consec_frames (int): Number of consecutive frames below threshold to count as a blink
+            save_video (bool): Whether to save the processed video
+            output_filename (str): Name of the output video file if saving
+        """
+        # Initialize core parameters (num_faces=1 for CPU optimization)
+        self.generator = FaceMeshGenerator(num_faces=1)
+        self.video_path = video_path
+        self.EAR_THRESHOLD = threshold
+        self.CONSEC_FRAMES = consec_frames
+        self.cached_plot_img = None
+
+        # 3D Head Model Points for Head Pose Estimation (solvePnP)
+        self.model_points_3d = np.array([
+            (0.0, 0.0, 0.0),             # Nose tip (1)
+            (0.0, -330.0, -65.0),        # Chin (152)
+            (-225.0, 170.0, -135.0),     # Left eye outer corner (33)
+            (225.0, 170.0, -135.0),      # Right eye outer corner (263)
+            (-150.0, -150.0, -125.0),    # Left mouth corner (61)
+            (150.0, -150.0, -125.0)      # Right mouth corner (291)
+        ], dtype=np.float64)
+        self.head_pose_landmarks = [1, 152, 33, 263, 61, 291]
+
+        # Distance Estimation & Calibration parameters
+        self.K_factor = 4200.0
+        self.current_eye_pixel_dist = 0.0
+        
+        # Initialize video saving parameters
+        self._init_video_saving(save_video, output_filename)
+        
+        # Initialize tracking variables
+        self._init_tracking_variables()
+        
+        # Initialize plotting
+        self._init_plot()
+
+    def calibrate_distance(self, known_distance_cm=50.0):
+        """Fine-tune the distance multiplier K when user sits at a known distance (e.g. 50cm)."""
+        if self.current_eye_pixel_dist > 0:
+            self.K_factor = known_distance_cm * self.current_eye_pixel_dist
+            print(f"[CALIBRATE SUCCESS] New K_factor: {self.K_factor:.2f} at {known_distance_cm} cm")
+
+    def estimate_distance(self, landmarks):
+        """Estimate distance from eyes to camera (in cm) using Interpupillary Distance."""
+        left_eye = np.array(landmarks[33])
+        right_eye = np.array(landmarks[263])
+        self.current_eye_pixel_dist = np.linalg.norm(left_eye - right_eye)
+        if self.current_eye_pixel_dist > 0:
+            return self.K_factor / self.current_eye_pixel_dist
+        return None
+
+    def estimate_head_pose(self, landmarks, frame_w, frame_h):
+        """Calculate Pitch, Yaw, Roll angles of the head using solvePnP."""
+        image_points_2d = np.array([
+            landmarks[idx] for idx in self.head_pose_landmarks
+        ], dtype=np.float64)
+
+        focal_length = frame_w
+        center = (frame_w / 2, frame_h / 2)
+        camera_matrix = np.array([
+            [focal_length, 0, center[0]],
+            [0, focal_length, center[1]],
+            [0, 0, 1]
+        ], dtype=np.float64)
+        dist_coeffs = np.zeros((4, 1))
+
+        success, rvec, tvec = cv.solvePnP(
+            self.model_points_3d, image_points_2d, camera_matrix, dist_coeffs, flags=cv.SOLVEPNP_ITERATIVE
+        )
+
+        if success:
+            rmat, _ = cv.Rodrigues(rvec)
+            angles, _, _, _, _, _ = cv.RQDecomp3x3(rmat)
+            pitch, yaw, roll = angles[0], angles[1], angles[2]
+            return pitch, yaw, roll
+        return None, None, None
+
+    def _init_video_saving(self, save_video, output_filename):
+        """Initialize video saving parameters and create output directory if needed."""
+        self.save_video = save_video
+        self.output_filename = output_filename
+        self.out = None
+        
+        if self.save_video and self.output_filename:
+            save_dir = "DATA/VIDEOS/OUTPUTS"
+            os.makedirs(save_dir, exist_ok=True)
+            self.output_filename = os.path.join(save_dir, self.output_filename)
+
+    def _init_tracking_variables(self):
+        """Initialize variables used for tracking blinks and frame processing."""
+        self.blink_counter = 0
+        self.frame_counter = 0
+        self.frame_number = 0
+        self.ear_values = []
+        self.frame_numbers = []
+        self.max_frames = 100
+        self.new_w = self.new_h = None
+        # Add default y-axis limits
+        self.default_ymin = 0.18  # Typical minimum EAR value
+        self.default_ymax = 0.44  # Typical maximum EAR value
+
+    def _init_plot(self):
+        """Initialize the matplotlib plot for EAR visualization."""
+        # Set up dark theme plot (dpi=80 for fast CPU rendering)
+        plt.style.use('dark_background')
+        plt.ioff()
+        self.fig, self.ax = plt.subplots(figsize=(6, 3), dpi=80)
+        self.canvas = FigureCanvas(self.fig)
+        
+        # Configure plot aesthetics
+        self._configure_plot_aesthetics()
+        
+        # Initialize plot data
+        self._init_plot_data()
+
+        self.fig.canvas.draw()
+
+    def _configure_plot_aesthetics(self):
+        """Configure the aesthetic properties of the plot."""
+        # Set background colors
+        self.fig.patch.set_facecolor('#000000')
+        self.ax.set_facecolor('#000000')
+        
+        # Configure axes with default limits initially
+        self.ax.set_ylim(self.default_ymin, self.default_ymax)
+        self.ax.set_xlim(0, self.max_frames)
+        
+        # Set labels and title
+        self.ax.set_xlabel("Frame Number", color='white', fontsize=10)
+        self.ax.set_ylabel("EAR", color='white', fontsize=10)
+        self.ax.set_title("Real-Time Eye Aspect Ratio (EAR)", 
+                         color='white', pad=8, fontsize=14, fontweight='bold')
+        
+        # Configure grid and spines
+        self.ax.grid(True, color='#707b7c', linestyle='--', alpha=0.7)
+        for spine in self.ax.spines.values():
+            spine.set_color('white')
+        
+        # Configure ticks and legend
+        self.ax.tick_params(colors='white', which='both')
+
+    def _init_plot_data(self):
+        """Initialize the plot data and curves."""
+        self.x_vals = list(range(self.max_frames))
+        self.y_vals = [0] * self.max_frames
+        self.Y_vals = [self.EAR_THRESHOLD] * self.max_frames
+        
+        # Create curves with explicit labels
+        self.EAR_curve, = self.ax.plot(
+            self.x_vals, 
+            self.y_vals,
+            color=self.COLORS['GREEN']['hex'],
+            label="Eye Aspect Ratio",
+            linewidth=2
+        )
+        
+        self.threshold_line, = self.ax.plot(
+            self.x_vals,
+            self.Y_vals,
+            color=self.COLORS['RED']['hex'],
+            label="Blink Threshold",
+            linewidth=2,
+            linestyle='--'
+        )
+        
+        # Add legend 
+        self.legend = self.ax.legend(
+            handles=[self.EAR_curve, self.threshold_line],
+            loc='upper right',
+            fontsize=8,
+            facecolor='black',
+            edgecolor='white',
+            labelcolor='white',
+            framealpha=0.8,
+            borderpad=1,
+            handlelength=2
+        )
+
+    def eye_aspect_ratio(self, eye_landmarks, landmarks):
+        """
+        Calculate the eye aspect ratio (EAR) for given eye landmarks.
+        """
+        A = np.linalg.norm(np.array(landmarks[eye_landmarks[1]]) - 
+                          np.array(landmarks[eye_landmarks[5]]))
+        B = np.linalg.norm(np.array(landmarks[eye_landmarks[2]]) - 
+                          np.array(landmarks[eye_landmarks[4]]))
+        C = np.linalg.norm(np.array(landmarks[eye_landmarks[0]]) - 
+                          np.array(landmarks[eye_landmarks[3]]))
+        return (A + B) / (2.0 * C)
+
+    def _update_plot(self, ear):
+        """Update the plot with new EAR values."""
+        if len(self.ear_values) > self.max_frames:
+            self.ear_values.pop(0)
+            self.frame_numbers.pop(0)
+            
+        color = self.COLORS['BLUE']['hex'] if ear < self.EAR_THRESHOLD else self.COLORS['GREEN']['hex']
+        
+        self.EAR_curve.set_xdata(self.frame_numbers)
+        self.EAR_curve.set_ydata(self.ear_values)
+        self.EAR_curve.set_color(color)
+        
+        self.threshold_line.set_xdata(self.frame_numbers)
+        self.threshold_line.set_ydata([self.EAR_THRESHOLD] * len(self.frame_numbers))
+        
+        if len(self.frame_numbers) > 1:
+            x_min = min(self.frame_numbers)
+            x_max = max(self.frame_numbers)
+            if x_min == x_max:
+                x_min -= 0.5
+                x_max += 0.5
+            self.ax.set_xlim(x_min, x_max)
+        else:
+            self.ax.set_xlim(0, self.max_frames)
+
+        if self.legend not in self.ax.get_children():
+            self.legend = self.ax.legend(
+                handles=[self.EAR_curve, self.threshold_line],
+                loc='upper right',
+                fontsize=8,
+                facecolor='black',
+                edgecolor='white',
+                labelcolor='white',
+                framealpha=0.8,
+                borderpad=1,
+                handlelength=2
+            )
+        
+        self.ax.draw_artist(self.ax.patch)
+        self.ax.draw_artist(self.EAR_curve)
+        self.ax.draw_artist(self.threshold_line)
+        self.ax.draw_artist(self.legend)
+        self.fig.canvas.flush_events()
+
+    def process_frame(self, frame):
+        """
+        Process a single frame to detect eyes, head pose, and distance.
+        """
+        fh, fw, _ = frame.shape
+        frame, face_landmarks = self.generator.create_face_mesh(frame, draw=False)
+        
+        if not face_landmarks:
+            return frame, None
+            
+        # 1. Calculate EAR
+        right_ear = self.eye_aspect_ratio(self.RIGHT_EYE_EAR, face_landmarks)
+        left_ear = self.eye_aspect_ratio(self.LEFT_EYE_EAR, face_landmarks)
+        ear = (right_ear + left_ear) / 2.0
+        
+        # 2. Estimate Distance
+        dist_cm = self.estimate_distance(face_landmarks)
+
+        # 3. Estimate Head Pose
+        pitch, yaw, roll = self.estimate_head_pose(face_landmarks, fw, fh)
+
+        # Determine visualization color
+        color = self.COLORS['BLUE']['bgr'] if ear < self.EAR_THRESHOLD else self.COLORS['GREEN']['bgr']
+        
+        # Draw landmarks and info
+        self._draw_frame_elements(frame, face_landmarks, color, dist_cm, pitch, yaw)
+        
+        return frame, ear
+
+    def _draw_frame_elements(self, frame, landmarks, color, dist_cm=None, pitch=None, yaw=None):
+        """Draw eye landmarks, blink counter, distance, pose & warnings on frame."""
+        for eye in [self.RIGHT_EYE, self.LEFT_EYE]:
+            for loc in eye:
+                cv.circle(frame, (landmarks[loc]), 2, color, cv.FILLED)
+        
+        DrawingUtils.draw_text_with_bg(
+            frame, f"Blinks: {self.blink_counter}", (10, 30),
+            font_scale=0.7, thickness=2,
+            bg_color=color, text_color=(0, 0, 0)
+        )
+
+        if dist_cm is not None:
+            dist_bg = (0, 0, 255) if dist_cm < 40 else (30, 46, 209)
+            DrawingUtils.draw_text_with_bg(
+                frame, f"Dist: {dist_cm:.1f} cm", (10, 65),
+                font_scale=0.6, thickness=2,
+                bg_color=dist_bg, text_color=(255, 255, 255)
+            )
+
+        if pitch is not None:
+            pose_color = (0, 0, 255) if pitch > 15 else (0, 255, 255)
+            cv.putText(frame, f"Pitch: {pitch:.1f}deg | Yaw: {yaw:.1f}deg", (10, 100),
+                       cv.FONT_HERSHEY_SIMPLEX, 0.5, pose_color, 1, cv.LINE_AA)
+
+        # Warnings
+        warning_y = 125
+        if pitch is not None and pitch > 15:
+            cv.putText(frame, "CANH BAO: CUI DAU QUA SAU!", (10, warning_y),
+                       cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2, cv.LINE_AA)
+            warning_y += 25
+
+        if dist_cm is not None and dist_cm < 40:
+            cv.putText(frame, "CANH BAO: NGOI QUA GAN!", (10, warning_y),
+                       cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2, cv.LINE_AA)
+
+    def process_video(self):
+        """Process the video / webcam / ESP32-CAM stream."""
+        try:
+            # Open video capture (supports 0 for webcam, file paths, or ESP32-CAM HTTP URLs)
+            if isinstance(self.video_path, str) and self.video_path.startswith("http"):
+                urls_to_try = [self.video_path]
+                clean_url = self.video_path.rstrip("/")
+                urls_to_try.extend([
+                    f"{clean_url}:81/stream",
+                    f"{clean_url}/stream",
+                    f"{clean_url}/mjpeg"
+                ])
+                
+                cap = None
+                for url in urls_to_try:
+                    print(f"[ESP32-CAM] Connecting to: {url} ...")
+                    temp_cap = cv.VideoCapture(url)
+                    if temp_cap.isOpened():
+                        ret, _ = temp_cap.read()
+                        if ret:
+                            print(f"[ESP32-CAM SUCCESS] Connected to {url}")
+                            cap = temp_cap
+                            break
+                        temp_cap.release()
+                
+                if cap is None or not cap.isOpened():
+                    raise IOError(f"Failed to connect to ESP32-CAM stream at {self.video_path}")
+            else:
+                cap = cv.VideoCapture(self.video_path)
+                if not cap.isOpened():
+                    raise IOError(f"Failed to open video source: {self.video_path}")
+
+            print("\n--- CONTROLS ---")
+            print("Press 'c' to Calibrate Distance (sit 50cm from camera)")
+            print("Press 'p' to Quit\n")
+
+            self._process_video_frames(cap)
+            
+        except Exception as e:
+            print(f"An error occurred: {e}")
+        finally:
+            if 'cap' in locals() and cap and cap.isOpened():
+                cap.release()
+            if self.out:
+                self.out.release()
+            cv.destroyAllWindows()
+
+    def _process_video_frames(self, cap):
+        """Process individual frames from video capture."""
+        is_live_stream = isinstance(self.video_path, int) or (
+            isinstance(self.video_path, str) and self.video_path.startswith("http")
+        )
+
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            # Resize frame for webcam / stream to 480x360 to boost CPU performance
+            if is_live_stream:
+                frame = cv.resize(frame, (480, 360))
+
+            # Process frame and get EAR
+            frame, ear = self.process_frame(frame)
+            
+            if ear is not None:
+                self._update_blink_detection(ear)
+                self._update_visualization(frame, ear, is_live_stream)
+
+            wait_time = 1 if is_live_stream else 30
+            key = cv.waitKey(wait_time) & 0xFF
+            if key == ord('p'):
+                break
+            elif key == ord('c'):
+                self.calibrate_distance(known_distance_cm=50.0)
+
+    def _update_blink_detection(self, ear):
+        """Update blink detection based on EAR value."""
+        self.ear_values.append(ear)
+        self.frame_numbers.append(self.frame_number)
+        
+        if ear < self.EAR_THRESHOLD:
+            self.frame_counter += 1
+        else:
+            if self.frame_counter >= self.CONSEC_FRAMES:
+                self.blink_counter += 1
+            self.frame_counter = 0
+        
+        self.frame_number += 1
+
+    def _update_visualization(self, frame, ear, is_live_stream=False):
+        """Update the visualization including the plot and video output."""
+        # Refresh plot image (every 2 frames on live stream for max CPU speed)
+        if not is_live_stream or self.frame_number % 2 == 0 or self.cached_plot_img is None:
+            self._update_plot(ear)
+            self.cached_plot_img = self.plot_to_image()
+            
+        plot_img = self.cached_plot_img
+        plot_img_resized = cv.resize(
+            plot_img,
+            (frame.shape[1], int(plot_img.shape[0] * frame.shape[1] / plot_img.shape[1]))
+        )
+        
+        # Stack frame and plot vertically
+        stacked_frame = cv.vconcat([frame, plot_img_resized])
+        self._handle_video_output(stacked_frame)
+
+    def _handle_video_output(self, stacked_frame):
+        """Handle video output, including saving and display."""
+        if self.new_w is None:
+            self.new_w = stacked_frame.shape[1]
+            self.new_h = stacked_frame.shape[0]
+            if self.save_video:
+                self.out = cv.VideoWriter(
+                    self.output_filename,
+                    cv.VideoWriter_fourcc(*"mp4v"),
+                    30,
+                    (self.new_w, self.new_h)
+                )
+
+        if self.save_video:
+            self.out.write(stacked_frame)
+
+        cv.imshow("Video with EAR Plot & Pose Estimator", stacked_frame)
+
+    def plot_to_image(self):
+        """Convert the matplotlib plot to an OpenCV-compatible image."""
+        self.canvas.draw()
+        buffer = self.canvas.buffer_rgba()
+        img_array = np.asarray(buffer)
+        return cv.cvtColor(img_array, cv.COLOR_RGBA2RGB)
+
+
+if __name__ == "__main__":
+    # ESP32-CAM HTTP Stream URL
+    input_video_path = "http://172.20.10.3/"
+    blink_counter = BlinkCounterandEARPlot(
+        video_path=input_video_path,
+        threshold=0.294,
+        consec_frames=3,
+        save_video=False
+    )
+    blink_counter.process_video()
+
+
+
