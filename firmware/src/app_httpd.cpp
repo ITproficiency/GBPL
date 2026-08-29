@@ -19,6 +19,8 @@
 #include "esp32-hal-ledc.h"
 #include "sdkconfig.h"
 #include "camera_index.h"
+#include "head_pose_detector.h"
+#include "firebase_manager.h"
 
 #if defined(ARDUINO_ARCH_ESP32) && defined(CONFIG_ARDUHAL_ESP_LOG)
 #include "esp32-hal-log.h"
@@ -95,6 +97,11 @@ static const char *_STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %
 
 httpd_handle_t stream_httpd = NULL;
 httpd_handle_t camera_httpd = NULL;
+
+// Trạng thái suy luận TinyML thời gian thực (chia sẻ an toàn giữa stream & predict)
+static int g_latest_class_id = 0;
+static float g_latest_confidence = 0.0f;
+static int64_t g_last_inference_time = 0;
 
 #if CONFIG_ESP_FACE_DETECT_ENABLED
 
@@ -281,14 +288,13 @@ static int run_face_recognition(fb_data_t *fb, std::list<dl::detect::result_t> *
 #if CONFIG_LED_ILLUMINATOR_ENABLED
 void enable_led(bool en)
 { // Turn LED On or Off
+    if (led_duty == 0) return; // Bỏ qua nếu không dùng LED flash
     int duty = en ? led_duty : 0;
     if (en && isStreaming && (led_duty > CONFIG_LED_MAX_INTENSITY))
     {
         duty = CONFIG_LED_MAX_INTENSITY;
     }
     ledcWrite(LED_LEDC_CHANNEL, duty);
-    //ledc_set_duty(CONFIG_LED_LEDC_SPEED_MODE, CONFIG_LED_LEDC_CHANNEL, duty);
-    //ledc_update_duty(CONFIG_LED_LEDC_SPEED_MODE, CONFIG_LED_LEDC_CHANNEL);
     log_i("Set LED intensity to %d", duty);
 }
 #endif
@@ -585,6 +591,19 @@ static esp_err_t stream_handler(httpd_req_t *req)
         {
             _timestamp.tv_sec = fb->timestamp.tv_sec;
             _timestamp.tv_usec = fb->timestamp.tv_usec;
+
+            // Chạy suy luận AI trực tiếp trên frame của Video Stream mỗi 300ms
+            int64_t now_time = esp_timer_get_time();
+            if (now_time - g_last_inference_time > 300000) {
+                g_last_inference_time = now_time;
+                float conf = 0.0f;
+                int cid = run_head_pose_from_camera_fb(fb, &conf);
+                if (cid >= 0) {
+                    g_latest_class_id = cid;
+                    g_latest_confidence = conf;
+                    upload_head_pose_to_firebase(cid, get_head_pose_label(cid), conf);
+                }
+            }
 #if CONFIG_ESP_FACE_DETECT_ENABLED
     #if ARDUHAL_LOG_LEVEL >= ARDUHAL_LOG_LEVEL_INFO
             fr_start = esp_timer_get_time();
@@ -1183,29 +1202,205 @@ static esp_err_t win_handler(httpd_req_t *req)
     return httpd_resp_send(req, NULL, 0);
 }
 
+static const char INDEX_HTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32-S3 TinyML Head Pose AI Monitor</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-blue: #38bdf8;
+            --accent-green: #22c55e;
+            --accent-warning: #f59e0b;
+            --accent-danger: #ef4444;
+            --accent-purple: #a855f7;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: var(--bg-color); color: var(--text-primary); min-height: 100vh; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        header { text-align: center; margin-bottom: 25px; }
+        header h1 { font-size: 1.8rem; background: linear-gradient(135deg, #38bdf8, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 800; }
+        header p { color: var(--text-secondary); font-size: 0.95rem; margin-top: 5px; }
+        .container { display: grid; grid-template-columns: 1fr 340px; gap: 20px; max-width: 1050px; width: 100%; }
+        @media (max-width: 850px) { .container { grid-template-columns: 1fr; } }
+        .video-card { background: var(--card-bg); border-radius: 16px; padding: 16px; border: 1px solid #334155; display: flex; flex-direction: column; align-items: center; position: relative; }
+        .video-container { position: relative; width: 100%; aspect-ratio: 4/3; max-width: 640px; background: #000; border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+        .video-container img { width: 100%; height: 100%; object-fit: contain; }
+        .alert-banner { display: none; margin-top: 15px; width: 100%; padding: 12px 16px; border-radius: 10px; background: rgba(239, 68, 68, 0.2); border: 1px solid var(--accent-danger); color: #fca5a5; font-weight: 600; text-align: center; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        .panel { background: var(--card-bg); border-radius: 16px; padding: 20px; border: 1px solid #334155; display: flex; flex-direction: column; gap: 18px; }
+        .panel h2 { font-size: 1.2rem; color: var(--accent-blue); font-weight: 700; border-bottom: 1px solid #334155; padding-bottom: 10px; }
+        .status-badge { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 12px; font-weight: 700; font-size: 1.05rem; background: #334155; color: var(--text-primary); }
+        .status-badge.normal { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid #22c55e; }
+        .status-badge.warning { background: rgba(245, 158, 11, 0.25); color: #fbbf24; border: 1px solid #f59e0b; }
+        .status-badge.turned { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid #0284c7; }
+        .status-badge.tilted { background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid #9333ea; }
+        .metric-row { display: flex; justify-content: space-between; font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 6px; }
+        .progress-bar-bg { background: #0f172a; border-radius: 8px; height: 10px; overflow: hidden; width: 100%; }
+        .progress-bar-fill { background: linear-gradient(90deg, #38bdf8, #22c55e); height: 100%; width: 0%; transition: width 0.3s ease; }
+        .btn-group { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+        .btn { padding: 12px; border-radius: 10px; border: none; font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 0.95rem; }
+        .btn-primary { background: #0284c7; color: white; }
+        .btn-primary:hover { background: #0369a1; }
+        .btn-secondary { background: #334155; color: white; }
+        .btn-secondary:hover { background: #475569; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>ESP32-S3 TinyML Head Pose Monitor</h1>
+        <p>Hệ thống giám sát tư thế đầu & cảnh báo cúi đầu (Text Neck) bằng trí tuệ nhân tạo nhúng</p>
+    </header>
+    <div class="container">
+        <div class="video-card">
+            <div class="video-container">
+                <img id="stream" src="" alt="Stream camera đang tắt">
+            </div>
+            <div id="alertBanner" class="alert-banner">
+                ⚠️ CẢNH BÁO: Phát hiện bạn đang CÚI ĐẦU quá lâu! Hãy ngồi thẳng lại!
+            </div>
+        </div>
+        <div class="panel">
+            <h2>Kết quả dự đoán AI</h2>
+            <div>
+                <div class="metric-row"><span>Tư thế hiện tại:</span></div>
+                <div id="statusBadge" class="status-badge">Đang kết nối...</div>
+            </div>
+            <div>
+                <div class="metric-row">
+                    <span>Độ tin cậy (Confidence):</span>
+                    <span id="confVal">0%</span>
+                </div>
+                <div class="progress-bar-bg">
+                    <div id="confBar" class="progress-bar-fill"></div>
+                </div>
+            </div>
+            <div>
+                <div class="metric-row">
+                    <span>Thời gian suy luận (Latency):</span>
+                    <span id="latencyVal">-- ms</span>
+                </div>
+                <div class="metric-row">
+                    <span>Trạng thái kết nối:</span>
+                    <span id="connStatus" style="color: #22c55e;">Hoạt động</span>
+                </div>
+            </div>
+            <div class="btn-group">
+                <button id="toggleStreamBtn" class="btn btn-primary" onclick="toggleStream()">Bật Video Stream</button>
+                <button class="btn btn-secondary" onclick="fetchPrediction()">Dự đoán 1 lần (/predict)</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        const streamImg = document.getElementById('stream');
+        const statusBadge = document.getElementById('statusBadge');
+        const confVal = document.getElementById('confVal');
+        const confBar = document.getElementById('confBar');
+        const latencyVal = document.getElementById('latencyVal');
+        const alertBanner = document.getElementById('alertBanner');
+        const toggleStreamBtn = document.getElementById('toggleStreamBtn');
+
+        let streaming = false;
+        let predictInterval = null;
+
+        function toggleStream() {
+            if (!streaming) {
+                streamImg.src = location.origin + '/stream';
+                toggleStreamBtn.innerText = 'Tắt Video Stream';
+                streaming = true;
+            } else {
+                streamImg.src = '';
+                toggleStreamBtn.innerText = 'Bật Video Stream';
+                streaming = false;
+            }
+        }
+
+        async function fetchPrediction() {
+            const t0 = performance.now();
+            try {
+                const res = await fetch(location.origin + '/predict');
+                const data = await res.json();
+                const dt = Math.round(performance.now() - t0);
+
+                latencyVal.innerText = dt + ' ms';
+                const pct = Math.round(data.confidence * 100);
+                confVal.innerText = pct + '%';
+                confBar.style.width = pct + '%';
+
+                statusBadge.innerText = data.class_name;
+                statusBadge.className = 'status-badge ';
+
+                if (data.class_id === 0) statusBadge.classList.add('normal');
+                else if (data.class_id === 1) statusBadge.classList.add('warning');
+                else if (data.class_id === 2) statusBadge.classList.add('turned');
+                else if (data.class_id === 3) statusBadge.classList.add('tilted');
+
+                if (data.class_id === 1) {
+                    alertBanner.style.display = 'block';
+                } else {
+                    alertBanner.style.display = 'none';
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        predictInterval = setInterval(fetchPrediction, 400);
+        toggleStream();
+    </script>
+</body>
+</html>
+)rawliteral";
+
 static esp_err_t index_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html");
-    httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
-    sensor_t *s = esp_camera_sensor_get();
-    if (s != NULL) {
-        if (s->id.PID == OV3660_PID) {
-            return httpd_resp_send(req, (const char *)index_ov3660_html_gz, index_ov3660_html_gz_len);
-        } else if (s->id.PID == OV5640_PID) {
-            return httpd_resp_send(req, (const char *)index_ov5640_html_gz, index_ov5640_html_gz_len);
-        } else {
-            return httpd_resp_send(req, (const char *)index_ov2640_html_gz, index_ov2640_html_gz_len);
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    return httpd_resp_send(req, INDEX_HTML, strlen(INDEX_HTML));
+}
+
+static esp_err_t predict_handler(httpd_req_t *req)
+{
+    int64_t now_time = esp_timer_get_time();
+    // Nếu stream đang tắt (> 1s không có suy luận từ stream_handler), tự bắt 1 frame để suy luận
+    if (now_time - g_last_inference_time > 1000000) {
+        camera_fb_t *fb = esp_camera_fb_get();
+        if (fb) {
+            float confidence = 0.0f;
+            int class_id = run_head_pose_from_camera_fb(fb, &confidence);
+            esp_camera_fb_return(fb);
+            if (class_id >= 0) {
+                g_latest_class_id = class_id;
+                g_latest_confidence = confidence;
+                g_last_inference_time = now_time;
+            }
         }
-    } else {
-        log_e("Camera sensor not found");
-        return httpd_resp_send_500(req);
     }
+
+    char json_response[256];
+    snprintf(json_response, sizeof(json_response),
+        "{\"class_id\":%d,\"class_name\":\"%s\",\"confidence\":%.3f,\"status\":\"%s\"}",
+        g_latest_class_id,
+        get_head_pose_label(g_latest_class_id),
+        g_latest_confidence,
+        (g_latest_class_id == 1) ? "warning" : "ok"
+    );
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    return httpd_resp_send(req, json_response, strlen(json_response));
 }
 
 void startCameraServer()
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.max_uri_handlers = 16;
+    config.stack_size = 16384; // 16 KB stack size cho HTTPD Task
 
     httpd_uri_t index_uri = {
         .uri = "/",
@@ -1358,10 +1553,19 @@ void startCameraServer()
     // load ids from flash partition
     recognizer.set_ids_from_flash();
 #endif
+    httpd_uri_t predict_uri = {
+        .uri = "/predict",
+        .method = HTTP_GET,
+        .handler = predict_handler,
+        .user_ctx = NULL
+    };
+
     log_i("Starting web server on port: '%d'", config.server_port);
     if (httpd_start(&camera_httpd, &config) == ESP_OK)
     {
         httpd_register_uri_handler(camera_httpd, &index_uri);
+        httpd_register_uri_handler(camera_httpd, &stream_uri);
+        httpd_register_uri_handler(camera_httpd, &predict_uri);
         httpd_register_uri_handler(camera_httpd, &cmd_uri);
         httpd_register_uri_handler(camera_httpd, &status_uri);
         httpd_register_uri_handler(camera_httpd, &capture_uri);

@@ -1,51 +1,37 @@
 #include "esp_camera.h"
 #include <WiFi.h>
-
-//
-// WARNING!!! PSRAM IC required for UXGA resolution and high JPEG quality
-//            Ensure ESP32 Wrover Module or other board with PSRAM is selected
-//            Partial images will be transmitted if image exceeds buffer size
-//
-//            You must select partition scheme from the board menu that has at least 3MB APP space.
-//            Face Recognition is DISABLED for ESP32 and ESP32-S2, because it takes up from 15 
-//            seconds to process single frame. Face Detection is ENABLED if PSRAM is enabled as well
+#include "head_pose_detector.h"
+#include "sensor_manager.h"
+#include "firebase_manager.h"
 
 // ===================
 // Select camera model
 // ===================
-//#define CAMERA_MODEL_WROVER_KIT // Has PSRAM
-// #define CAMERA_MODEL_ESP_EYE // Has PSRAM
 #define CAMERA_MODEL_ESP32S3_EYE // Has PSRAM
-//#define CAMERA_MODEL_M5STACK_PSRAM // Has PSRAM
-//#define CAMERA_MODEL_M5STACK_V2_PSRAM // M5Camera version B Has PSRAM
-//#define CAMERA_MODEL_M5STACK_WIDE // Has PSRAM
-//#define CAMERA_MODEL_M5STACK_ESP32CAM // No PSRAM
-//#define CAMERA_MODEL_M5STACK_UNITCAM // No PSRAM
-//#define CAMERA_MODEL_AI_THINKER // Has PSRAM
-//#define CAMERA_MODEL_TTGO_T_JOURNAL // No PSRAM
-//#define CAMERA_MODEL_XIAO_ESP32S3 // Has PSRAM
-// ** Espressif Internal Boards **
-//#define CAMERA_MODEL_ESP32_CAM_BOARD
-//#define CAMERA_MODEL_ESP32S2_CAM_BOARD
-//#define CAMERA_MODEL_ESP32S3_CAM_LCD
-//#define CAMERA_MODEL_DFRobot_FireBeetle2_ESP32S3 // Has PSRAM
-//#define CAMERA_MODEL_DFRobot_Romeo_ESP32S3 // Has PSRAM
 #include "camera_pins.h"
 
 // ===========================
 // Enter your WiFi credentials
 // ===========================
 const char* ssid = "tony";
-const char* password = "12345678";
+const char* password = "00000000";
 
 void startCameraServer();
 void setupLedFlash(int pin);
 
 void setup() {
   Serial.begin(115200);
-  delay(2000);
+  while (!Serial && millis() < 3000); // Đợi kết nối Serial CDC (USB)
+  delay(1000);
   Serial.setDebugOutput(true);
   Serial.println();
+
+  Serial.println("==================================================");
+  Serial.println(" ESP32-S3 TinyML Head Pose + Sensors + Firebase");
+  Serial.println("==================================================");
+
+  // Khởi tạo cảm biến (LDR & Ultrasonic)
+  init_sensors();
 
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -69,30 +55,20 @@ void setup() {
   config.xclk_freq_hz = 20000000;
   config.frame_size = FRAMESIZE_QVGA;
   config.pixel_format = PIXFORMAT_JPEG; // for streaming
-  //config.pixel_format = PIXFORMAT_RGB565; // for face detection/recognition
-  config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+  config.grab_mode = CAMERA_GRAB_LATEST;
   config.fb_location = CAMERA_FB_IN_PSRAM;
-  config.jpeg_quality = 40;
-  config.fb_count = 1;
+  config.jpeg_quality = 12;
+  config.fb_count = 2;
   
-  // if PSRAM IC present, init with UXGA resolution and higher JPEG quality
-  //                      for larger pre-allocated frame buffer.
-  if(config.pixel_format == PIXFORMAT_JPEG){
-    if(psramFound()){
+  if (config.pixel_format == PIXFORMAT_JPEG) {
+    if (psramFound()) {
       config.jpeg_quality = 10;
       config.fb_count = 2;
       config.grab_mode = CAMERA_GRAB_LATEST;
     } else {
-      // Limit the frame size when PSRAM is not available
       config.frame_size = FRAMESIZE_SVGA;
       config.fb_location = CAMERA_FB_IN_DRAM;
     }
-  } else {
-    // Best option for face detection/recognition
-    config.frame_size = FRAMESIZE_240X240;
-#if CONFIG_IDF_TARGET_ESP32S3
-    config.fb_count = 2;
-#endif
   }
 
 #if defined(CAMERA_MODEL_ESP_EYE)
@@ -107,33 +83,32 @@ void setup() {
     return;
   }
 
-
   sensor_t * s = esp_camera_sensor_get();
-  // initial sensors are flipped vertically and colors are a bit saturated
   if (s->id.PID == OV3660_PID) {
-    s->set_vflip(s, 1); // flip it back
-    s->set_brightness(s, 1); // up the brightness just a bit
-    s->set_saturation(s, -2); // lower the saturation
+    s->set_vflip(s, 1);
+    s->set_brightness(s, 1);
+    s->set_saturation(s, -2);
   }
-  // drop down frame size for higher initial frame rate
-  if(config.pixel_format == PIXFORMAT_JPEG){
+  if (config.pixel_format == PIXFORMAT_JPEG) {
     s->set_framesize(s, FRAMESIZE_QVGA);
   }
-
-#if defined(CAMERA_MODEL_M5STACK_WIDE) || defined(CAMERA_MODEL_M5STACK_ESP32CAM)
-  s->set_vflip(s, 1);
-  s->set_hmirror(s, 1);
-#endif
 
 #if defined(CAMERA_MODEL_ESP32S3_EYE)
   s->set_vflip(s, 1);
 #endif
 
-// Setup LED FLash if LED pin is defined in camera_pins.h
 #if defined(LED_GPIO_NUM)
   setupLedFlash(LED_GPIO_NUM);
 #endif
 
+  // ---------- KHỞI TẠO TENSORFLOW LITE MICRO ----------
+  if (init_head_pose_detector()) {
+      Serial.println("[SUCCESS] TinyML Head Pose Detector Khoi tao thanh cong!");
+  } else {
+      Serial.println("[ERROR] Khoi tao TinyML Head Pose Detector THAT BAI!");
+  }
+
+  // Kết nối WiFi
   WiFi.begin(ssid, password);
   WiFi.setSleep(false);
 
@@ -142,16 +117,35 @@ void setup() {
     Serial.print(".");
   }
   Serial.println("");
-  Serial.println("WiFi connected");
+  Serial.println("[WiFi] Connected successfully!");
+
+  // Khởi tạo Firebase Realtime Database
+  init_firebase();
 
   startCameraServer();
 
   Serial.print("Camera Ready! Use 'http://");
   Serial.print(WiFi.localIP());
-  Serial.println("' to connect");
+  Serial.println("' to connect\n");
 }
 
 void loop() {
-  // Do nothing. Everything is done in another task by the web server
-  delay(10000);
+  // Đọc dữ liệu cảm biến LDR và Siêu âm
+  int lightADC = read_light_adc();
+  float lux = read_lux();
+  float distance = read_distance();
+
+  Serial.println("----------------------------------------");
+  Serial.printf("Light ADC : %d | Lux : %.2f lux\n", lightADC, lux);
+  if (distance < 0) {
+    Serial.println("Distance  : No echo");
+  } else {
+    Serial.printf("Distance  : %.2f cm\n", distance);
+  }
+
+  // Đăng tải dữ liệu cảm biến lên Firebase Realtime Database
+  upload_sensor_data_to_firebase(lightADC, lux, distance);
+
+  // Đợi 2 giây giữa các lần đọc cảm biến
+  delay(2000);
 }
