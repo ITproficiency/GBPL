@@ -3,7 +3,7 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from FaceMeshModule import FaceMeshGenerator
-from utils import DrawingUtils
+from utils import DrawingUtils, ThreadedVideoStream
 import os
 
 
@@ -45,6 +45,14 @@ class BlinkCounterandEARPlot:
         self.EAR_THRESHOLD = threshold
         self.CONSEC_FRAMES = consec_frames
         self.cached_plot_img = None
+        self.display_scale = 2.0
+        self.pose_reference = None
+        self.pose_reference_rotation = None
+        self.last_raw_pose = None
+        self.last_raw_rotation = None
+        self.last_raw_roll = None
+        self.roll_reference = None
+        self.filtered_roll = None
 
         # 3D Head Model Points for Head Pose Estimation (solvePnP)
         self.model_points_3d = np.array([
@@ -76,6 +84,20 @@ class BlinkCounterandEARPlot:
             self.K_factor = known_distance_cm * self.current_eye_pixel_dist
             print(f"[CALIBRATE SUCCESS] New K_factor: {self.K_factor:.2f} at {known_distance_cm} cm")
 
+    def calibrate_head_pose(self):
+        """Set the current head orientation as the zero-angle reference."""
+        if self.last_raw_pose is not None and self.last_raw_rotation is not None:
+            self.pose_reference = self.last_raw_pose
+            self.pose_reference_rotation = self.last_raw_rotation.copy()
+            self.roll_reference = self.last_raw_roll
+            self.filtered_roll = 0.0
+            print(
+                "[POSE CALIBRATE SUCCESS] Reference set to "
+                f"Pitch={self.pose_reference[0]:.1f}, "
+                f"Yaw={self.pose_reference[1]:.1f}, "
+                f"Roll={self.pose_reference[2]:.1f} degrees"
+            )
+
     def estimate_distance(self, landmarks):
         """Estimate distance from eyes to camera (in cm) using Interpupillary Distance."""
         left_eye = np.array(landmarks[33])
@@ -105,11 +127,99 @@ class BlinkCounterandEARPlot:
         )
 
         if success:
-            rmat, _ = cv.Rodrigues(rvec)
-            angles, _, _, _, _, _ = cv.RQDecomp3x3(rmat)
-            pitch, yaw, roll = angles[0], angles[1], angles[2]
+            rmat_old, _ = cv.Rodrigues(rvec)
+
+            # The model points use X=right, Y=up, Z=depth. Convert them to
+            # the displayed axes: X=forward, Y=right, Z=up.
+            old_axes_from_new_axes = np.array([
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [1.0, 0.0, 0.0]
+            ])
+            rmat_new = rmat_old @ old_axes_from_new_axes
+            self.last_raw_rotation = rmat_new.copy()
+            if self.pose_reference_rotation is None:
+                self.pose_reference_rotation = rmat_new.copy()
+
+            # Compare rotations as matrices before extracting Euler angles.
+            # This avoids roll changing artificially when pitch changes.
+            relative_rotation = self.pose_reference_rotation.T @ rmat_new
+            angles, _, _, _, _, _ = cv.RQDecomp3x3(relative_rotation)
+
+            # Use the relative rotation for pitch and yaw. Roll is measured
+            # from the eye line so pitch does not create a false roll angle.
+            pitch = angles[1]
+            yaw = angles[2]
+
+            eye_vector = image_points_2d[3] - image_points_2d[2]
+            raw_roll = np.degrees(np.arctan2(eye_vector[1], eye_vector[0]))
+            self.last_raw_roll = raw_roll
+            if self.roll_reference is None:
+                self.roll_reference = raw_roll
+            roll = raw_roll - self.roll_reference
+            roll = (roll + 180.0) % 360.0 - 180.0
+            if self.filtered_roll is None:
+                self.filtered_roll = roll
+            else:
+                self.filtered_roll = 0.75 * self.filtered_roll + 0.25 * roll
+            roll = self.filtered_roll
+            self.last_raw_pose = (pitch, yaw, roll)
+
+            if self.pose_reference is None:
+                self.pose_reference = self.last_raw_pose
             return pitch, yaw, roll
         return None, None, None
+
+    def draw_head_axes(self, frame, landmarks):
+        """Draw X/Y/Z head axes with the nose tip as the origin."""
+        frame_h, frame_w = frame.shape[:2]
+        image_points_2d = np.array([
+            landmarks[idx] for idx in self.head_pose_landmarks
+        ], dtype=np.float64)
+
+        focal_length = frame_w
+        center = (frame_w / 2, frame_h / 2)
+        camera_matrix = np.array([
+            [focal_length, 0, center[0]],
+            [0, focal_length, center[1]],
+            [0, 0, 1]
+        ], dtype=np.float64)
+        dist_coeffs = np.zeros((4, 1))
+
+        success, rvec, tvec = cv.solvePnP(
+            self.model_points_3d,
+            image_points_2d,
+            camera_matrix,
+            dist_coeffs,
+            flags=cv.SOLVEPNP_ITERATIVE
+        )
+        if not success:
+            return
+
+        axis_length = 100.0
+        axis_points_3d = np.array([
+            (0.0, 0.0, 0.0),
+            (0.0, 0.0, axis_length),
+            (axis_length, 0.0, 0.0),
+            (0.0, axis_length, 0.0)
+        ], dtype=np.float64)
+        axis_points_2d, _ = cv.projectPoints(
+            axis_points_3d, rvec, tvec, camera_matrix, dist_coeffs
+        )
+        axis_points_2d = axis_points_2d.reshape(-1, 2).astype(int)
+        origin = tuple(axis_points_2d[0])
+
+        for endpoint, color, label in zip(
+            axis_points_2d[1:],
+            ((0, 0, 255), (0, 255, 0), (255, 0, 0)),
+            ("X", "Y", "Z")
+        ):
+            endpoint = tuple(endpoint)
+            cv.line(frame, origin, endpoint, color, 3, cv.LINE_AA)
+            cv.putText(frame, label, endpoint, cv.FONT_HERSHEY_SIMPLEX,
+                       0.7, color, 2, cv.LINE_AA)
+
+        cv.circle(frame, origin, 4, (255, 255, 255), cv.FILLED)
 
     def _init_video_saving(self, save_video, output_filename):
         """Initialize video saving parameters and create output directory if needed."""
@@ -293,15 +403,17 @@ class BlinkCounterandEARPlot:
         color = self.COLORS['BLUE']['bgr'] if ear < self.EAR_THRESHOLD else self.COLORS['GREEN']['bgr']
         
         # Draw landmarks and info
-        self._draw_frame_elements(frame, face_landmarks, color, dist_cm, pitch, yaw)
+        self._draw_frame_elements(frame, face_landmarks, color, dist_cm, pitch, yaw, roll)
         
         return frame, ear
 
-    def _draw_frame_elements(self, frame, landmarks, color, dist_cm=None, pitch=None, yaw=None):
+    def _draw_frame_elements(self, frame, landmarks, color, dist_cm=None, pitch=None, yaw=None, roll=None):
         """Draw eye landmarks, blink counter, distance, pose & warnings on frame."""
         for eye in [self.RIGHT_EYE, self.LEFT_EYE]:
             for loc in eye:
                 cv.circle(frame, (landmarks[loc]), 2, color, cv.FILLED)
+
+        self.draw_head_axes(frame, landmarks)
         
         DrawingUtils.draw_text_with_bg(
             frame, f"Blinks: {self.blink_counter}", (10, 30),
@@ -318,14 +430,26 @@ class BlinkCounterandEARPlot:
             )
 
         if pitch is not None:
-            pose_color = (0, 0, 255) if pitch > 15 else (0, 255, 255)
-            cv.putText(frame, f"Pitch: {pitch:.1f}deg | Yaw: {yaw:.1f}deg", (10, 100),
-                       cv.FONT_HERSHEY_SIMPLEX, 0.5, pose_color, 1, cv.LINE_AA)
+            pose_color = (0, 0, 255) if abs(pitch) > 15 else (0, 255, 255)
+            cv.putText(frame, f"Pitch: {pitch:.1f}deg | Yaw: {yaw:.1f}deg", (5, 98),
+                       cv.FONT_HERSHEY_SIMPLEX, 0.35, pose_color, 1, cv.LINE_AA)
+            cv.putText(frame, f"Roll: {roll:.1f}deg", (5, 116),
+                       cv.FONT_HERSHEY_SIMPLEX, 0.35, pose_color, 1, cv.LINE_AA)
 
         # Warnings
-        warning_y = 125
+        warning_y = 140
         if pitch is not None and pitch > 15:
             cv.putText(frame, "CANH BAO: CUI DAU QUA SAU!", (10, warning_y),
+                       cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2, cv.LINE_AA)
+            warning_y += 25
+
+        if pitch is not None and pitch < -15:
+            cv.putText(frame, "CANH BAO: NGANG DAU QUA SAU!", (10, warning_y),
+                       cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2, cv.LINE_AA)
+            warning_y += 25
+
+        if roll is not None and abs(roll) > 15:
+            cv.putText(frame, "CANH BAO: NGHIENG DAU QUA SAU!", (10, warning_y),
                        cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2, cv.LINE_AA)
             warning_y += 25
 
@@ -349,25 +473,37 @@ class BlinkCounterandEARPlot:
                 cap = None
                 for url in urls_to_try:
                     print(f"[ESP32-CAM] Connecting to: {url} ...")
-                    temp_cap = cv.VideoCapture(url)
+                    temp_cap = ThreadedVideoStream(url)
                     if temp_cap.isOpened():
                         ret, _ = temp_cap.read()
                         if ret:
                             print(f"[ESP32-CAM SUCCESS] Connected to {url}")
+                            temp_cap.start()
                             cap = temp_cap
                             break
                         temp_cap.release()
                 
                 if cap is None or not cap.isOpened():
                     raise IOError(f"Failed to connect to ESP32-CAM stream at {self.video_path}")
+            elif isinstance(self.video_path, int):
+                # Webcam: use ThreadedVideoStream to avoid latency
+                cap = ThreadedVideoStream(self.video_path)
+                if not cap.isOpened():
+                    raise IOError(f"Failed to open video source: {self.video_path}")
+                cap.set(cv.CAP_PROP_FRAME_WIDTH, 640)
+                cap.set(cv.CAP_PROP_FRAME_HEIGHT, 480)
+                cap.start()
             else:
+                # Video file: use normal cv.VideoCapture to process all frames sequentially
                 cap = cv.VideoCapture(self.video_path)
                 if not cap.isOpened():
                     raise IOError(f"Failed to open video source: {self.video_path}")
 
             print("\n--- CONTROLS ---")
             print("Press 'c' to Calibrate Distance (sit 50cm from camera)")
+            print("Press 'h' to Calibrate Head Pose (current angle becomes 0, 0, 0)")
             print("Press 'p' to Quit\n")
+            cv.namedWindow("Video with EAR Plot & Pose Estimator", cv.WINDOW_NORMAL)
 
             self._process_video_frames(cap)
             
@@ -391,10 +527,6 @@ class BlinkCounterandEARPlot:
             if not ret:
                 break
 
-            # Resize frame for webcam / stream to 480x360 to boost CPU performance
-            if is_live_stream:
-                frame = cv.resize(frame, (480, 360))
-
             # Process frame and get EAR
             frame, ear = self.process_frame(frame)
             
@@ -408,6 +540,8 @@ class BlinkCounterandEARPlot:
                 break
             elif key == ord('c'):
                 self.calibrate_distance(known_distance_cm=50.0)
+            elif key == ord('h'):
+                self.calibrate_head_pose()
 
     def _update_blink_detection(self, ear):
         """Update blink detection based on EAR value."""
@@ -456,7 +590,14 @@ class BlinkCounterandEARPlot:
         if self.save_video:
             self.out.write(stacked_frame)
 
-        cv.imshow("Video with EAR Plot & Pose Estimator", stacked_frame)
+        display_frame = cv.resize(
+            stacked_frame,
+            None,
+            fx=self.display_scale,
+            fy=self.display_scale,
+            interpolation=cv.INTER_LINEAR
+        )
+        cv.imshow("Video with EAR Plot & Pose Estimator", display_frame)
 
     def plot_to_image(self):
         """Convert the matplotlib plot to an OpenCV-compatible image."""
