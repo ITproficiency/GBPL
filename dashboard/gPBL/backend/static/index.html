@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PostureCare</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>PostureCare Monitor</h1>
+      <p class="subtitle">AI-assisted posture &amp; workspace coaching</p>
+    </div>
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="focus">Focus</button>
+      <button class="tab-btn" data-tab="details">Details</button>
+    </nav>
+    <div class="header-right">
+      <span class="risk-pill" id="headerRiskPill">--</span>
+      <span class="live-dot"></span>
+      <span id="lastUpdate">Loading...</span>
+      <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Open settings">⚙</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="focusView" class="tab-view active">
+      <div class="focus-grid">
+        <div class="panel focus-hero" id="focusHero">
+          <div class="focus-mode-badge" id="focusModeBadge">READY</div>
+          <div class="focus-ring-wrap">
+            <svg class="focus-ring" viewBox="0 0 200 200">
+              <circle class="focus-ring-bg" cx="100" cy="100" r="90"></circle>
+              <circle class="focus-ring-progress" id="focusRingProgress" cx="100" cy="100" r="90"></circle>
+            </svg>
+            <div class="focus-time" id="focusTime">--:--</div>
+          </div>
+          <div class="focus-controls">
+            <button id="focusStartBtn" class="focus-btn primary">Start Focus</button>
+            <button id="focusPauseBtn" class="focus-btn" disabled>Pause</button>
+            <button id="focusResetBtn" class="focus-btn" disabled>Reset</button>
+          </div>
+          <p class="focus-active-task" id="focusActiveTask">No task selected</p>
+          <p class="focus-session-count" id="focusSessionCount">Sessions completed: 0</p>
+        </div>
+
+        <div class="panel task-panel">
+          <div class="panel-header">
+            <h2>Tasks</h2>
+          </div>
+          <form id="taskForm" class="task-form">
+            <input id="taskInput" type="text" placeholder="What are you working on?" maxlength="120" autocomplete="off" />
+            <button type="submit" class="focus-btn primary">Add</button>
+          </form>
+          <ul class="task-list" id="taskList">
+            <li class="empty">No tasks yet — add one to track pomodoros.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="detailsView" class="tab-view">
+      <div class="details-grid">
+        <div class="details-main">
+          <div class="cards">
+            <div class="card">
+              <div class="label">Distance</div>
+              <div class="value"><span id="distance">--</span> <span class="unit">cm</span></div>
+            </div>
+            <div class="card">
+              <div class="label">Brightness</div>
+              <div class="value"><span id="brightness">--</span> <span class="unit">lux</span></div>
+            </div>
+            <div class="card">
+              <div class="label">Sitting Time</div>
+              <div class="value"><span id="sittingMinutes">--</span> <span class="unit">min</span></div>
+            </div>
+            <div class="card">
+              <div class="label">Blink Rate</div>
+              <div class="value"><span id="blinkRate">--</span> <span class="unit">bpm</span></div>
+            </div>
+            <div class="card">
+              <div class="label">Head Pose</div>
+              <div class="value" id="headPose">--</div>
+            </div>
+            <div class="card">
+              <div class="label">Risk</div>
+              <div class="value" id="riskLevel">--</div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>Live Chart (session)</h2>
+            <div class="chart-wrap"><canvas id="sensorChart"></canvas></div>
+          </div>
+        </div>
+
+        <div class="details-side">
+          <div class="panel">
+            <h2>Warnings</h2>
+            <ul class="alert-list" id="alertList">
+              <li class="empty">No warnings</li>
+            </ul>
+          </div>
+
+          <div class="panel advice-panel" id="advicePanel">
+            <div class="panel-header">
+              <h2>AI Advice</h2>
+              <button id="analyzeBtn" class="analyze-btn insight-btn">Get Advice</button>
+            </div>
+            <p id="analyzeStatus" class="analyze-status"></p>
+            <div id="adviceContent" class="advice-content">
+              <p class="empty">AI advice appears here when risk is elevated.</p>
+            </div>
+          </div>
+
+          <div class="panel insight-panel" id="insightPanel">
+            <div class="panel-header">
+              <h2>Session Insight</h2>
+              <button id="insightBtn" class="analyze-btn insight-btn">Generate Insight</button>
+            </div>
+            <p id="insightStatus" class="analyze-status"></p>
+            <div id="insightContent" class="advice-content">
+              <p class="empty">Generate an insight after a few minutes of monitoring.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p id="rulesInfo" class="rules-info">Loading rules...</p>
+  </footer>
+
+  <div class="settings-overlay" id="settingsOverlay">
+    <div class="settings-panel">
+      <div class="settings-header">
+        <h2>Settings</h2>
+        <button id="settingsCloseBtn" class="icon-btn" aria-label="Close settings">✕</button>
+      </div>
+
+      <div class="settings-group">
+        <h3>Timer</h3>
+        <div class="settings-row">
+          <span>Focus length</span>
+          <span class="settings-row-value"><span id="focusMinutesValue">25</span> min</span>
+        </div>
+        <input type="range" id="focusMinutesInput" min="5" max="60" step="5" value="25" />
+
+        <div class="settings-row">
+          <span>Break length</span>
+          <span class="settings-row-value"><span id="breakMinutesValue">5</span> min</span>
+        </div>
+        <input type="range" id="breakMinutesInput" min="1" max="30" step="1" value="5" />
+      </div>
+
+      <div class="settings-group">
+        <h3>Ambient sound</h3>
+        <div class="sound-options" id="soundOptions">
+          <!-- Populated dynamically by focus.js from GET /api/sounds (backend/static/sounds/) -->
+        </div>
+        <div class="settings-row">
+          <span>Ambient volume</span>
+        </div>
+        <input type="range" id="ambientVolumeInput" min="0" max="100" step="5" value="50" />
+      </div>
+
+      <div class="settings-group">
+        <h3>Custom music (YouTube)</h3>
+        <div class="yt-row">
+          <input type="text" id="youtubeUrlInput" placeholder="Paste a YouTube link..." autocomplete="off" />
+          <button type="button" id="youtubePlayBtn" class="focus-btn primary">Play</button>
+        </div>
+        <div class="settings-row">
+          <span>YouTube volume</span>
+        </div>
+        <input type="range" id="youtubeVolumeInput" min="0" max="100" step="5" value="50" />
+        <p class="yt-status" id="youtubeStatus"></p>
+      </div>
+
+      <div class="settings-group">
+        <h3>Alarm volume</h3>
+        <input type="range" id="alarmVolumeInput" min="0" max="100" step="5" value="60" />
+      </div>
+
+      <div class="settings-group">
+        <h3>Voice reminders</h3>
+        <div class="toggle-row">
+          <span>Speak advice &amp; insights aloud</span>
+          <label class="switch">
+            <input type="checkbox" id="voiceEnabledInput" />
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+        <div class="settings-row">
+          <span>Voice volume</span>
+        </div>
+        <input type="range" id="voiceVolumeInput" min="0" max="100" step="5" value="80" />
+      </div>
+
+      <div class="settings-group">
+        <h3>AI limits</h3>
+        <div class="settings-row">
+          <span>Advice cooldown</span>
+          <span class="settings-row-value"><span id="analyzeCooldownValue">60</span>s</span>
+        </div>
+        <input type="range" id="analyzeCooldownInput" min="10" max="300" step="10" value="60" />
+
+        <div class="settings-row">
+          <span>Insight cooldown</span>
+          <span class="settings-row-value"><span id="insightCooldownValue">60</span>s</span>
+        </div>
+        <input type="range" id="insightCooldownInput" min="10" max="300" step="10" value="60" />
+        <p class="yt-status" id="cooldownStatus"></p>
+      </div>
+
+      <div class="settings-group">
+        <h3>Background theme</h3>
+        <div class="theme-options" id="themeOptions">
+          <button type="button" data-theme="slate" class="theme-swatch theme-slate" title="Slate"></button>
+          <button type="button" data-theme="midnight" class="theme-swatch theme-midnight" title="Midnight"></button>
+          <button type="button" data-theme="forest" class="theme-swatch theme-forest" title="Forest"></button>
+          <button type="button" data-theme="sunset" class="theme-swatch theme-sunset" title="Sunset"></button>
+          <button type="button" data-theme="ocean" class="theme-swatch theme-ocean" title="Ocean"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="youtubePlayerContainer" class="yt-hidden"></div>
+
+  <script src="focus.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,950 @@
+:root {
+  --bg: #0f1419;
+  --surface: #1a2332;
+  --border: #2d3a4f;
+  --text: #e7ecf3;
+  --muted: #8b9cb3;
+  --normal: #22c55e;
+  --warning: #f59e0b;
+  --high: #ef4444;
+  --accent: #3b82f6;
+}
+
+/* Background themes — swap the palette, keep risk colors (normal/warning/high)
+   fixed since those are semantic, not stylistic. */
+:root[data-focus-theme="midnight"] {
+  --bg: linear-gradient(160deg, #0a0a1f 0%, #14103a 100%);
+  --surface: #171335;
+  --border: #2e2a5c;
+  --accent: #818cf8;
+}
+
+:root[data-focus-theme="forest"] {
+  --bg: linear-gradient(160deg, #071a12 0%, #0f2b1c 100%);
+  --surface: #12261a;
+  --border: #234433;
+  --accent: #34d399;
+}
+
+:root[data-focus-theme="sunset"] {
+  --bg: linear-gradient(160deg, #1a0f0a 0%, #3a1a10 100%);
+  --surface: #2a1810;
+  --border: #4d2c1c;
+  --accent: #fb923c;
+}
+
+:root[data-focus-theme="ocean"] {
+  --bg: linear-gradient(160deg, #051620 0%, #0a2e3d 100%);
+  --surface: #0e2530;
+  --border: #1c4353;
+  --accent: #22d3ee;
+}
+
+body {
+  transition: background 0.4s ease;
+}
+
+header, .panel, .focus-btn, .analyze-btn {
+  transition: background 0.4s ease, border-color 0.4s ease;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+}
+
+/* App-shell layout: the page itself never scrolls — header/footer are
+   fixed-height, main fills what's left, and any panel with more content
+   than fits (e.g. a long LLM narrative) scrolls internally instead. */
+body {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+header {
+  flex-shrink: 0;
+  padding: 0.85rem 1.75rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--surface);
+}
+
+header h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+header .subtitle {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--normal);
+  border-radius: 50%;
+  margin-right: 6px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+main {
+  flex: 1;
+  min-height: 0;
+  padding: 1rem 1.75rem;
+  max-width: 1800px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ---------------- Tabs ---------------- */
+
+.tab-nav {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.tab-btn {
+  padding: 0.5rem 1.1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.tab-view {
+  display: none;
+  flex: 1;
+  min-height: 0;
+}
+
+.tab-view.active {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------------- Details layout ---------------- */
+
+.details-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 2.2fr 1fr;
+  gap: 1.25rem;
+}
+
+@media (max-width: 1100px) {
+  .details-grid { grid-template-columns: 1fr; }
+}
+
+.details-main,
+.details-side {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 0;
+}
+
+.details-main .panel:has(.chart-wrap) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.details-main .chart-wrap {
+  flex: 1;
+  min-height: 120px;
+}
+
+/* The sidebar itself never scrolls — Warnings keeps its natural height and
+   Advice/Insight share whatever's left, each scrolling its own content area
+   (see .advice-content) instead of the whole cluster growing/scrolling. */
+.details-side > .panel {
+  flex-shrink: 0;
+}
+
+.advice-panel,
+.insight-panel {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cards {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 0.6rem;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.card .label {
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.3rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card .value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card .unit {
+  font-size: 0.875rem;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.risk-normal { color: var(--normal); }
+.risk-warning { color: var(--warning); }
+.risk-high { color: var(--high); }
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+}
+
+.panel h2 {
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.65rem;
+}
+
+.chart-wrap {
+  position: relative;
+  height: 280px;
+}
+
+.alert-list {
+  list-style: none;
+}
+
+.alert-item {
+  padding: 0.75rem;
+  border-radius: 8px;
+  margin-bottom: 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 3px solid var(--border);
+  font-size: 0.875rem;
+}
+
+.alert-item.warning { border-left-color: var(--warning); }
+.alert-item.high { border-left-color: var(--high); }
+
+.alert-item .time {
+  color: var(--muted);
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.alert-item .msg {
+  margin-top: 0.25rem;
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 0.875rem;
+  text-align: center;
+  padding: 2rem;
+}
+
+footer {
+  flex-shrink: 0;
+  text-align: center;
+  padding: 0.4rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.advice-panel {
+  border-color: var(--accent);
+}
+
+.advice-panel.has-advice {
+  border-left: 4px solid var(--accent);
+}
+
+.advice-summary {
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.45;
+}
+
+.advice-summary p { margin-bottom: 0.5rem; }
+.advice-summary p:last-child { margin-bottom: 0; }
+.advice-summary ul, .advice-summary ol { margin: 0 0 0.5rem 1.1rem; }
+.advice-summary li { margin-bottom: 0.25rem; }
+.advice-summary strong { color: var(--text); }
+.advice-summary code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+
+/* Content is unbounded LLM narrative — the panel header/status stay put and
+   this area fills whatever space the panel has, scrolling internally instead
+   of growing the panel (and cutting text at an arbitrary fixed height). */
+.advice-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.advice-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.advice-content::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+
+.advice-recs {
+  margin-left: 1.1rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.advice-recs li {
+  margin-bottom: 0.25rem;
+  color: var(--text);
+}
+
+.advice-meta {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.analyze-btn {
+  width: 100%;
+  padding: 0.7rem 0.5rem;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.analyze-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.analyze-status {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 0.5rem;
+  text-align: center;
+}
+
+.rules-info {
+  text-align: center;
+  padding: 0.75rem;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.panel-header h2 {
+  margin-bottom: 0;
+}
+
+.insight-btn {
+  width: auto;
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.insight-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin: 0.5rem 0 0.75rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.insight-panel {
+  border-color: var(--accent);
+}
+
+.focus-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem 1.5rem;
+}
+
+.focus-mode-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--accent);
+}
+
+.focus-mode-badge.mode-break {
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--normal);
+}
+
+.focus-ring-wrap {
+  position: relative;
+  width: 220px;
+  height: 220px;
+}
+
+.focus-ring {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.focus-ring-bg {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 10;
+}
+
+.focus-ring-progress {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 10;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s linear, stroke 0.3s;
+}
+
+.focus-time {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.focus-controls {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.focus-btn {
+  padding: 0.6rem 1.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.focus-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.focus-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.focus-session-count {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.nav-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+
+.nav-link:hover {
+  text-decoration: underline;
+}
+
+/* ---------------- Header ---------------- */
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.icon-btn {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ---------------- Focus + tasks layout ---------------- */
+
+.focus-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 1.5rem;
+  align-items: stretch;
+}
+
+@media (max-width: 900px) {
+  /* Stacked single column: the hero's natural height plus a usable task list
+     no longer both fit the no-scroll shell, so let this cluster scroll instead
+     (the task-panel min-height floor that makes the list usable here lives
+     next to the base .task-panel rule below, in the Task list section — it
+     has to come after that rule in source order to win the cascade tie). */
+  .focus-grid {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+}
+
+.focus-active-task {
+  font-size: 0.85rem;
+  color: var(--text);
+  font-weight: 600;
+  text-align: center;
+}
+
+/* ---------------- Task list ---------------- */
+
+.task-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+@media (max-width: 900px) {
+  /* Give the task list room to show more than one row once it's stacked
+     under the hero (see the .focus-grid override above) — otherwise CSS
+     Grid's auto-track sizing shrinks this panel toward its content minimum,
+     since every box in this flex chain opts into min-height: 0. */
+  .task-panel {
+    min-height: 280px;
+  }
+}
+
+.task-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.task-form input {
+  flex: 1;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font-size: 0.875rem;
+}
+
+.task-form input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.task-form button {
+  width: auto;
+  padding: 0.6rem 1.1rem;
+}
+
+.task-list {
+  list-style: none;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.task-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.5rem;
+  border-radius: 8px;
+  margin-bottom: 0.35rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.task-item.active {
+  border-left: 3px solid var(--accent);
+}
+
+.task-item.done .task-text {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.task-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.task-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+}
+
+.task-pomo {
+  font-size: 0.75rem;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.task-select,
+.task-delete {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0.15rem 0.35rem;
+  flex-shrink: 0;
+}
+
+.task-select:hover { color: var(--accent); }
+.task-delete:hover { color: var(--high); }
+
+.task-select:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.task-select:disabled:hover {
+  color: var(--muted);
+}
+
+/* ---------------- Settings panel ---------------- */
+
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: flex-end;
+  z-index: 100;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.settings-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.settings-panel {
+  width: min(360px, 90vw);
+  height: 100%;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  padding: 1.5rem;
+  overflow-y: auto;
+  transform: translateX(20px);
+  transition: transform 0.25s ease;
+}
+
+.settings-overlay.open .settings-panel {
+  transform: translateX(0);
+}
+
+.settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.settings-header h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.settings-group {
+  margin-bottom: 1.75rem;
+}
+
+.settings-group h3 {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 0.75rem;
+}
+
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.875rem;
+  margin-bottom: 0.35rem;
+}
+
+.settings-row-value {
+  color: var(--muted);
+}
+
+.settings-group input[type="range"] {
+  width: 100%;
+  margin-bottom: 1rem;
+  accent-color: var(--accent);
+}
+
+.sound-options,
+.theme-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.sound-btn {
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+/* ---------------- Custom music (YouTube) ---------------- */
+
+.yt-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.yt-row input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
+.yt-row input[type="text"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.yt-row button {
+  width: auto;
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.yt-status {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: -0.4rem;
+  margin-bottom: 0.5rem;
+  min-height: 1em;
+}
+
+.yt-hidden {
+  position: fixed;
+  top: -9999px;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sound-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.theme-swatch {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+
+.theme-swatch.selected {
+  border-color: var(--text);
+}
+
+.theme-swatch.theme-slate { background: linear-gradient(135deg, #0f1419, #3b82f6); }
+.theme-swatch.theme-midnight { background: linear-gradient(135deg, #14103a, #818cf8); }
+.theme-swatch.theme-forest { background: linear-gradient(135deg, #0f2b1c, #34d399); }
+.theme-swatch.theme-sunset { background: linear-gradient(135deg, #3a1a10, #fb923c); }
+.theme-swatch.theme-ocean { background: linear-gradient(135deg, #0a2e3d, #22d3ee); }
+
+/* ---------------- Header risk pill ---------------- */
+
+.risk-pill {
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+}
+
+.risk-pill.risk-normal { color: var(--normal); }
+.risk-pill.risk-warning { color: var(--warning); }
+.risk-pill.risk-high {
+  color: var(--high);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+/* ---------------- Toggle switch (voice reminders) ---------------- */
+
+.toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.switch-slider::before {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 3px;
+  top: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.switch input:checked + .switch-slider {
+  background: var(--accent);
+}
+
+.switch input:checked + .switch-slider::before {
+  transform: translateX(18px);
+}

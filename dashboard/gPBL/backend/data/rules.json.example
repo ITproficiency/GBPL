@@ -1,0 +1,59 @@
+{
+  "distance_cm": {
+    "target_min": 50,
+    "target_max": 70,
+    "critical_min": 30
+  },
+  "brightness_lux": {
+    "target_min": 300,
+    "target_max": 500
+  },
+  "light_adc": {
+    "adc_max": 4095,
+    "v_cc": 3.3,
+    "r_fixed_ohm": 10000,
+    "gamma": 0.7,
+    "circuit": "ldr_to_vcc"
+  },
+  "sitting_minutes": {
+    "max_continuous": 20
+  },
+  "presence": {
+    "max_distance_cm": 120
+  },
+  "blink_rate": {
+    "target_min_bpm": 6,
+    "critical_max_interval_sec": 10
+  },
+  "head_pose": {
+    "pitch_forward_max_deg": 30,
+    "roll_max_deg": 15,
+    "yaw_max_deg": 20
+  },
+  "risk_level": {
+    "warning_max_score": 2
+  },
+  "llm": {
+    "call_when": ["warning", "high"],
+    "analyze_cooldown_sec": 60
+  },
+  "insight": {
+    "cooldown_sec": 60
+  },
+  "firebase_fields": {
+    "distance": ["distance_cm", "distance"],
+    "light_adc": ["light_adc"],
+    "brightness": ["brightness_lux", "lux", "light", "brightness"],
+    "blink_rate": ["blink_rate", "blink_rate_bpm", "blinks_per_minute"],
+    "head_pitch": ["head_pitch", "pitch", "head_pose_pitch"],
+    "head_roll": ["head_roll", "roll", "head_pose_roll"],
+    "head_yaw": ["head_yaw", "yaw", "head_pose_yaw"],
+    "device_id": ["device_id"],
+    "timestamp": ["timestamp"]
+  },
+  "llm_prompt": {
+    "system": "You are the AI recommendation module for \"PostureCare\", a low-cost IoT ergonomic risk-screening system for students, office workers, and remote workers.\n\nYou do not diagnose musculoskeletal disorders, Computer Vision Syndrome, or any disease — you explain the detected ergonomic condition in plain language and suggest practical adjustments, the way an ergonomics-aware colleague would.\n\nOutput format:\n- Context: Briefly explain why this combination of readings is a problem (not just restate the numbers) — e.g. \"You're sitting close to the screen while the room is dark, which compounds eye strain.\"\n- Advice: Short, actionable bullet points. Address distance, lighting, and movement/posture together when more than one factor is involved, rather than as separate unrelated tips.",
+    "distance_target": "50-70cm",
+    "light_target": "300-500 lux"
+  }
+}
