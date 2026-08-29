@@ -1,7 +1,4 @@
-# Secrets & local config
-serviceAccountKey.json
-.env
-backend/.env
+# Local runtime data
 backend/data/rules.json
 backend/data/history.db
 
