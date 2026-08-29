@@ -90,7 +90,223 @@
  C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp32-camera/conversions/include/esp_jpg_decode.h \
  C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/fb_gfx/include/fb_gfx.h \
  C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-ledc.h \
- src/camera_index.h \
+ src/camera_index.h include/firebase_manager.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp_arduino_version.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/include/freertos/semphr.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/include/freertos/queue.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/include/freertos/task.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/include/esp_sleep.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/hal/include/hal/touch_sensor_types.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/include/freertos/queue.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/include/freertos/event_groups.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/include/freertos/timers.h \
  C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-log.h \
  C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/log/include/esp_log.h \
- C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/log/include/esp_log_internal.h
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/log/include/esp_log_internal.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-matrix.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-uart.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/hal/include/hal/uart_types.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-gpio.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/variants/esp32s3/pins_arduino.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-touch.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-dac.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-adc.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-spi.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-i2c.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-ledc.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-rmt.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-sigmadelta.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-timer.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-bt.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-psram.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-rgb-led.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-cpu.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp8266-compat.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/stdlib_noniso.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/binary.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/WCharacter.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/WString.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/pgmspace.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/Stream.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/Print.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/Printable.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/IPAddress.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/WString.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/Printable.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/Client.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/Server.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/Udp.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/Stream.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/IPAddress.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/HardwareSerial.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/HWCDC.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_event/include/esp_event.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_event/include/esp_event_base.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_event/include/esp_event_legacy.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_wifi/include/esp_wifi_types.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_wifi/include/esp_private/esp_wifi_types_private.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/include/esp_interface.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_event/include/esp_event_base.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_netif/include/esp_netif.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_netif/include/esp_netif_ip_addr.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_netif/include/esp_netif_types.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_netif/include/esp_netif_defaults.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_eth/include/esp_eth_netif_glue.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_eth/include/esp_eth.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_eth/include/esp_eth_com.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/hal/include/hal/eth_types.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_eth/include/esp_eth_mac.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_eth/include/esp_eth_phy.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/tcpip_adapter/include/tcpip_adapter.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/tcpip_adapter/include/tcpip_adapter_types.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/ip_addr.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/opt.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/port/esp32/include/lwipopts.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/newlib/platform_include/sys/ioctl.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_system/include/esp_task.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/include/esp_additions/freertos/FreeRTOSConfig.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/port/esp32/include/netif/dhcp_state.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/port/esp32/include/sntp/sntp_get_set_time.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/debug.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/arch.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/port/esp32/include/arch/cc.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/port/esp32/include/arch/sys_arch.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/port/esp32/include/arch/vfs_lwip.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/def.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/ip4_addr.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/ip6_addr.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/def.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/ip6_zone.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/include/apps/dhcpserver/dhcpserver.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/err.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_netif/include/esp_netif_sta_list.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/USBCDC.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/Esp.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/spi_flash/include/esp_partition.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/spi_flash/include/esp_flash.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/hal/include/hal/spi_flash_types.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/hal/include/hal/esp_flash_err.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/spi_flash/include/esp_spi_flash.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/spi_flash/include/esp_spi_flash_counters.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/include/soc/esp32/spiram.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/io_pin_remap.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/Firebase_ESP_Client.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/Firebase.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./core/Firebase_Client_Version.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./mbfs/MB_MCU.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./FirebaseFS.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/LittleFS/src/LittleFS.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/FS/src/FS.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/SD/src/SD.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src/SPI.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-spi.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/SD/src/sd_defines.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/././core/Firebase_Build_Options.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./FB_Const.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/././FirebaseFS.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/././FB_Network.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/././FirebaseFS.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/Ethernet/src/ETH.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFi.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/Print.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/IPv6Address.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFiType.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFiSTA.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFiGeneric.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_wifi/include/esp_smartconfig.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/wifi_provisioning/include/wifi_provisioning/manager.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/protocomm/include/common/protocomm.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/protocomm/include/security/protocomm_security.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/wifi_provisioning/include/wifi_provisioning/wifi_config.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFiAP.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFiScan.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFiClient.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/Client.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFiServer.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/Server.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFiUdp.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/Udp.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/cbuf.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/././mbfs/MB_FS.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/././mbfs/MB_FS_Interfaces.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./FirebaseFS.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/json/FirebaseJson.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/json/MB_List.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/json/MB_String.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/json/MB_JSON/MB_JSON.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-psram.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/Update/src/Update.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/MD5Builder.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_rom/include/esp_rom_md5.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./FB_Error.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/FB_Utils.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/client/FB_TCP_Client.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./FB_Error.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./FB_Const.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./mbfs/MB_FS.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./FB_Utils.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/ESP_SSLClient.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/ESP_SSLClient_FS.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/ESP_SSLClient_Const.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/BSSL_TCP_Client.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../ESP_SSLClient_Const.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/BSSL_SSL_Client.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/BSSL_Helper.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_hash.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_hmac.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_kdf.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_rand.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_block.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_prf.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_aead.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_rsa.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_ec.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_ssl.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_x509.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_pem.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/BSSL_CertStore.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./FB_Network.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/sockets.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/newlib/platform_include/sys/poll.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/netif.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/pbuf.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/stats.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/mem.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/memp.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/priv/memp_std.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/priv/memp_priv.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/priv/mem_priv.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/inet.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/errno.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/client/WiFiClientImpl.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/core/FirebaseCore.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/FB_TCP_Client.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/session/FB_Session.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./core/FirebaseCore.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./rtdb/stream/FB_Stream.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./rtdb/stream/FB_MP_Stream.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./rtdb/stream/FB_Stream.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./rtdb/QueueInfo.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./rtdb/QueryFilter.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./rtdb/QueueManager.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./rtdb/QueueInfo.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/rtdb/FB_RTDB.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./session/FB_Session.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/rtdb/QueueInfo.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/rtdb/./stream/FB_MP_Stream.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/rtdb/./stream/FB_Stream.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/message/FCM.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/storage/FCS.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/gcs/GCS.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/firestore/FB_Firestore.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./json/FirebaseJson.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/functions/FB_Functions.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/functions/FunctionsConfig.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/functions/PolicyBuilder.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/functions/FunctionsConfig.h \
+ include/sensor_manager.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-log.h

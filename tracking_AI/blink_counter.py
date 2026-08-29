@@ -3,35 +3,80 @@ import cv2 as cv
 from FaceMeshModule import FaceMeshGenerator
 from utils import DrawingUtils
 import os
+import threading
+import time
+import json
+import urllib.request
+
+
+class FirebaseSyncWorker:
+    """Non-blocking background worker to sync AI tracking metrics & warnings to Firebase RTDB."""
+    def __init__(self, database_url="https://gpbl-iot-llms-default-rtdb.asia-southeast1.firebasedatabase.app"):
+        self.url = database_url.rstrip("/") + "/ai_data.json"
+        self.latest_data = None
+        self.lock = threading.Lock()
+        self.running = True
+        self.thread = threading.Thread(target=self._worker_loop, daemon=True)
+        self.thread.start()
+
+    def update_state(self, pitch, roll, yaw, dist_cm, ear, blinks, warnings=None, posture_status="GOOD", nose_x=0.5, nose_y=0.55):
+        data = {
+            "pitch": round(float(pitch), 2) if pitch is not None else 0.0,
+            "roll": round(float(roll), 2) if roll is not None else 0.0,
+            "yaw": round(float(yaw), 2) if yaw is not None else 0.0,
+            "distance_cm": round(float(dist_cm), 1) if dist_cm is not None else 0.0,
+            "ear": round(float(ear), 3) if ear is not None else 0.0,
+            "blinks": int(blinks),
+            "warnings": warnings if warnings else [],
+            "posture_status": posture_status,
+            "nose_x": round(float(nose_x), 3) if nose_x is not None else 0.5,
+            "nose_y": round(float(nose_y), 3) if nose_y is not None else 0.55,
+            "timestamp": time.time()
+        }
+        with self.lock:
+            self.latest_data = data
+
+    def _worker_loop(self):
+        last_sent = None
+        while self.running:
+            data_to_send = None
+            with self.lock:
+                if self.latest_data is not None:
+                    data_to_send = self.latest_data.copy()
+
+            if data_to_send is not None and data_to_send != last_sent:
+                try:
+                    payload = json.dumps(data_to_send, ensure_ascii=False).encode('utf-8')
+                    req = urllib.request.Request(
+                        self.url,
+                        data=payload,
+                        method='PATCH',
+                        headers={'Content-Type': 'application/json; charset=utf-8'}
+                    )
+                    with urllib.request.urlopen(req, timeout=1.0) as res:
+                        pass
+                    last_sent = data_to_send
+                except Exception:
+                    pass
+
+            time.sleep(0.15)
+
+    def stop(self):
+        self.running = False
+
 
 class BlinkCounter:
     """
     A class to detect and count eye blinks in a video using facial landmarks.
-    
-    This class processes video input to detect eye blinks by calculating the Eye Aspect Ratio (EAR)
-    of both eyes. It can either process a video file or save the processed output to a new video file.
-    
-    Attributes:
-        ear_threshold (float): Threshold below which eyes are considered closed
-        consec_frames (int): Number of consecutive frames eyes must be closed to count as blink
     """
     
     def __init__(self, video_path, ear_threshold, consec_frames, save_video=False, output_filename=None):
-        """
-        Initialize the BlinkCounter with video source and processing parameters.
-        
-        Args:
-            video_path (str): Path to the input video file
-            ear_threshold (float): Threshold for eye aspect ratio to detect blink (default: 0.3)
-            consec_frames (int): Number of consecutive frames needed to confirm blink (default: 4)
-            save_video (bool): Whether to save the processed video
-            output_filename (str, optional): Name for the output video file
-        """
         # Initialize face mesh detector (num_faces=1 for CPU optimization)
         self.generator = FaceMeshGenerator(num_faces=1) 
         self.video_path = video_path
         self.save_video = save_video
         self.output_filename = output_filename
+        self.firebase_sync = FirebaseSyncWorker()
         
         # Define facial landmarks for eye detection
         self.RIGHT_EYE = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
@@ -236,6 +281,48 @@ class BlinkCounter:
                     ear = (right_ear + left_ear) / 2.0
                     self.update_blink_count(ear)
 
+                    # Estimate distance & head pose
+                    dist_cm = self.estimate_distance(face_landmarks)
+                    fh, fw = frame.shape[:2]
+                    pitch, yaw, roll = self.estimate_head_pose(face_landmarks, fw, fh)
+
+                    active_warnings = []
+                    is_danger = False
+                    if pitch is not None and pitch > 15:
+                        active_warnings.append(f"Cúi đầu quá sâu (+{pitch:.1f}° > 15°)")
+                        is_danger = True
+                    elif pitch is not None and pitch < -15:
+                        active_warnings.append(f"Ngửa đầu quá cao ({pitch:.1f}° < -15°)")
+                        is_danger = True
+
+                    if roll is not None and abs(roll) > 15:
+                        active_warnings.append(f"Nghiêng đầu lệch trục ({roll:.1f}°)")
+                        is_danger = True
+
+                    if dist_cm is not None and dist_cm < 40:
+                        active_warnings.append(f"Ngồi quá gần màn hình ({dist_cm:.1f} cm < 40 cm)")
+                        is_danger = True
+
+                    posture_status = "DANGER" if is_danger else ("WARNING" if (abs(pitch or 0) > 10 or abs(roll or 0) > 10) else "GOOD")
+
+                    nose_pt = face_landmarks[1] if (face_landmarks is not None and len(face_landmarks) > 1) else (fw // 2, fh // 2)
+                    norm_nose_x = nose_pt[0] / fw if fw > 0 else 0.5
+                    norm_nose_y = nose_pt[1] / fh if fh > 0 else 0.55
+
+                    if hasattr(self, 'firebase_sync'):
+                        self.firebase_sync.update_state(
+                            pitch=pitch,
+                            roll=roll,
+                            yaw=yaw,
+                            dist_cm=dist_cm,
+                            ear=ear,
+                            blinks=self.blink_counter,
+                            warnings=active_warnings,
+                            posture_status=posture_status,
+                            nose_x=norm_nose_x,
+                            nose_y=norm_nose_y
+                        )
+
                     # Determine visualization color based on EAR
                     color = self.set_colors(ear)
 
@@ -247,6 +334,11 @@ class BlinkCounter:
                     DrawingUtils.draw_text_with_bg(frame, f"Blinks: {self.blink_counter}", (10, 40),
                                     font_scale=1.0, thickness=2,
                                     bg_color=color, text_color=(0, 0, 0))
+
+                    if pitch is not None and roll is not None:
+                        DrawingUtils.draw_text_with_bg(frame, f"P: {pitch:.1f} | R: {roll:.1f}", (10, 80),
+                                        font_scale=0.7, thickness=2,
+                                        bg_color=(30, 41, 59), text_color=(255, 255, 255))
 
                     # Save frame if enabled
                     if self.save_video:

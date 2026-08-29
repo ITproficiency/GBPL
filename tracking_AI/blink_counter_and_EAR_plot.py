@@ -5,6 +5,83 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from FaceMeshModule import FaceMeshGenerator
 from utils import DrawingUtils, ThreadedVideoStream
 import os
+import threading
+import time
+import json
+import urllib.request
+
+
+class FirebaseSyncWorker:
+    """Non-blocking background worker to sync AI tracking metrics & warnings to Firebase RTDB."""
+    def __init__(self, database_url="https://gpbl-iot-llms-default-rtdb.asia-southeast1.firebasedatabase.app", on_calibrate=None):
+        self.url = database_url.rstrip("/") + "/ai_data.json"
+        self.latest_data = None
+        self.lock = threading.Lock()
+        self.running = True
+        self.on_calibrate = on_calibrate
+        self.last_calib_req = None
+        self.calib_check_counter = 0
+        self.thread = threading.Thread(target=self._worker_loop, daemon=True)
+        self.thread.start()
+
+    def update_state(self, pitch, roll, yaw, dist_cm, ear, blinks, warnings=None, posture_status="GOOD", nose_x=0.5, nose_y=0.55):
+        data = {
+            "pitch": round(float(pitch), 2) if pitch is not None else 0.0,
+            "roll": round(float(roll), 2) if roll is not None else 0.0,
+            "yaw": round(float(yaw), 2) if yaw is not None else 0.0,
+            "distance_cm": round(float(dist_cm), 1) if dist_cm is not None else 0.0,
+            "ear": round(float(ear), 3) if ear is not None else 0.0,
+            "blinks": int(blinks),
+            "warnings": warnings if warnings else [],
+            "posture_status": posture_status,
+            "nose_x": round(float(nose_x), 3) if nose_x is not None else 0.5,
+            "nose_y": round(float(nose_y), 3) if nose_y is not None else 0.55,
+            "timestamp": time.time()
+        }
+        with self.lock:
+            self.latest_data = data
+
+    def _worker_loop(self):
+        last_sent = None
+        while self.running:
+            data_to_send = None
+            with self.lock:
+                if self.latest_data is not None:
+                    data_to_send = self.latest_data.copy()
+
+            if data_to_send is not None and data_to_send != last_sent:
+                try:
+                    payload = json.dumps(data_to_send, ensure_ascii=False).encode('utf-8')
+                    req = urllib.request.Request(
+                        self.url,
+                        data=payload,
+                        method='PATCH',
+                        headers={'Content-Type': 'application/json; charset=utf-8'}
+                    )
+                    with urllib.request.urlopen(req, timeout=1.0) as res:
+                        pass
+                    last_sent = data_to_send
+                except Exception:
+                    pass
+
+            # Periodically check for calibration requests from web UI (~every 1.5s)
+            self.calib_check_counter += 1
+            if self.calib_check_counter >= 10 and self.on_calibrate:
+                self.calib_check_counter = 0
+                try:
+                    calib_url = self.url.replace(".json", "/calibrate_req.json")
+                    with urllib.request.urlopen(calib_url, timeout=0.8) as resp:
+                        calib_val = json.loads(resp.read().decode('utf-8'))
+                        if calib_val is not None and calib_val != self.last_calib_req:
+                            self.last_calib_req = calib_val
+                            self.on_calibrate()
+                except Exception:
+                    pass
+
+            time.sleep(0.15)  # ~6-7 Hz update rate for smooth UI sync
+
+    def stop(self):
+        self.running = False
 
 
 class BlinkCounterandEARPlot:
@@ -53,6 +130,9 @@ class BlinkCounterandEARPlot:
         self.last_raw_roll = None
         self.roll_reference = None
         self.filtered_roll = None
+
+        # Real-time Firebase Sync Worker
+        self.firebase_sync = FirebaseSyncWorker(on_calibrate=self.calibrate_head_pose)
 
         # 3D Head Model Points for Head Pose Estimation (solvePnP)
         self.model_points_3d = np.array([
@@ -403,11 +483,11 @@ class BlinkCounterandEARPlot:
         color = self.COLORS['BLUE']['bgr'] if ear < self.EAR_THRESHOLD else self.COLORS['GREEN']['bgr']
         
         # Draw landmarks and info
-        self._draw_frame_elements(frame, face_landmarks, color, dist_cm, pitch, yaw, roll)
+        self._draw_frame_elements(frame, face_landmarks, color, dist_cm, pitch, yaw, roll, ear)
         
         return frame, ear
 
-    def _draw_frame_elements(self, frame, landmarks, color, dist_cm=None, pitch=None, yaw=None, roll=None):
+    def _draw_frame_elements(self, frame, landmarks, color, dist_cm=None, pitch=None, yaw=None, roll=None, ear=None):
         """Draw eye landmarks, blink counter, distance, pose & warnings on frame."""
         for eye in [self.RIGHT_EYE, self.LEFT_EYE]:
             for loc in eye:
@@ -436,26 +516,60 @@ class BlinkCounterandEARPlot:
             cv.putText(frame, f"Roll: {roll:.1f}deg", (5, 116),
                        cv.FONT_HERSHEY_SIMPLEX, 0.35, pose_color, 1, cv.LINE_AA)
 
-        # Warnings
+        # Warnings collection and visualization
+        active_warnings = []
+        is_danger = False
+
         warning_y = 140
         if pitch is not None and pitch > 15:
             cv.putText(frame, "CANH BAO: CUI DAU QUA SAU!", (10, warning_y),
                        cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2, cv.LINE_AA)
             warning_y += 25
+            active_warnings.append(f"Cúi đầu quá sâu (+{pitch:.1f}° > 15°)")
+            is_danger = True
 
         if pitch is not None and pitch < -15:
             cv.putText(frame, "CANH BAO: NGANG DAU QUA SAU!", (10, warning_y),
                        cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2, cv.LINE_AA)
             warning_y += 25
+            active_warnings.append(f"Ngửa đầu quá cao ({pitch:.1f}° < -15°)")
+            is_danger = True
 
         if roll is not None and abs(roll) > 15:
             cv.putText(frame, "CANH BAO: NGHIENG DAU QUA SAU!", (10, warning_y),
                        cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2, cv.LINE_AA)
             warning_y += 25
+            active_warnings.append(f"Nghiêng đầu lệch trục ({roll:.1f}°)")
+            is_danger = True
 
         if dist_cm is not None and dist_cm < 40:
             cv.putText(frame, "CANH BAO: NGOI QUA GAN!", (10, warning_y),
                        cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2, cv.LINE_AA)
+            active_warnings.append(f"Ngồi quá gần màn hình ({dist_cm:.1f} cm < 40 cm)")
+            is_danger = True
+
+        posture_status = "DANGER" if is_danger else ("WARNING" if (abs(pitch or 0) > 10 or abs(roll or 0) > 10) else "GOOD")
+
+        # Extract normalized nose tip (landmark index 1)
+        fh, fw = frame.shape[:2]
+        nose_pt = landmarks[1] if (landmarks is not None and len(landmarks) > 1) else (fw // 2, fh // 2)
+        norm_nose_x = nose_pt[0] / fw if fw > 0 else 0.5
+        norm_nose_y = nose_pt[1] / fh if fh > 0 else 0.55
+
+        # Sync to Firebase RTDB in background thread
+        if hasattr(self, 'firebase_sync'):
+            self.firebase_sync.update_state(
+                pitch=pitch,
+                roll=roll,
+                yaw=yaw,
+                dist_cm=dist_cm,
+                ear=ear if ear is not None else 0.3,
+                blinks=self.blink_counter,
+                warnings=active_warnings,
+                posture_status=posture_status,
+                nose_x=norm_nose_x,
+                nose_y=norm_nose_y
+            )
 
     def process_video(self):
         """Process the video / webcam / ESP32-CAM stream."""

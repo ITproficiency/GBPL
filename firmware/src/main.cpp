@@ -1,6 +1,5 @@
 #include "esp_camera.h"
 #include <WiFi.h>
-#include "head_pose_detector.h"
 #include "sensor_manager.h"
 #include "firebase_manager.h"
 
@@ -27,7 +26,7 @@ void setup() {
   Serial.println();
 
   Serial.println("==================================================");
-  Serial.println(" ESP32-S3 TinyML Head Pose + Sensors + Firebase");
+  Serial.println("   ESP32-S3 Camera + Sensors + Firebase");
   Serial.println("==================================================");
 
   // Khởi tạo cảm biến (LDR & Ultrasonic)
@@ -100,13 +99,6 @@ void setup() {
 #if defined(LED_GPIO_NUM)
   setupLedFlash(LED_GPIO_NUM);
 #endif
-
-  // ---------- KHỞI TẠO TENSORFLOW LITE MICRO ----------
-  if (init_head_pose_detector()) {
-      Serial.println("[SUCCESS] TinyML Head Pose Detector Khoi tao thanh cong!");
-  } else {
-      Serial.println("[ERROR] Khoi tao TinyML Head Pose Detector THAT BAI!");
-  }
 
   // Kết nối WiFi
   WiFi.begin(ssid, password);

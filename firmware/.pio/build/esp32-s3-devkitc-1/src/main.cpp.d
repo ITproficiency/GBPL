@@ -209,4 +209,100 @@
  C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFiUdp.h \
  C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/Udp.h \
  C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/cbuf.h \
+ include/sensor_manager.h include/firebase_manager.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/Firebase_ESP_Client.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/Firebase.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./core/Firebase_Client_Version.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./mbfs/MB_MCU.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./FirebaseFS.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/LittleFS/src/LittleFS.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/FS/src/FS.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/SD/src/SD.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src/SPI.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-spi.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/SD/src/sd_defines.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/././core/Firebase_Build_Options.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./FB_Const.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/././FirebaseFS.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/././FB_Network.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/././FirebaseFS.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/Ethernet/src/ETH.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/././mbfs/MB_FS.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/././mbfs/MB_FS_Interfaces.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./FirebaseFS.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/json/FirebaseJson.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/json/MB_List.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/json/MB_String.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/json/MB_JSON/MB_JSON.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-psram.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/libraries/Update/src/Update.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/cores/esp32/MD5Builder.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_rom/include/esp_rom_md5.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./FB_Error.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/FB_Utils.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/client/FB_TCP_Client.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./FB_Error.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./FB_Const.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./mbfs/MB_FS.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./FB_Utils.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/ESP_SSLClient.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/ESP_SSLClient_FS.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/ESP_SSLClient_Const.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/BSSL_TCP_Client.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../ESP_SSLClient_Const.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/BSSL_SSL_Client.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/BSSL_Helper.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_hash.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_hmac.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_kdf.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_rand.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_block.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_prf.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_aead.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_rsa.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_ec.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_ssl.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_x509.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/../bssl/bearssl_pem.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/SSLClient/client/BSSL_CertStore.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./FB_Network.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/sockets.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/newlib/platform_include/sys/poll.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/netif.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/pbuf.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/stats.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/mem.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/memp.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/priv/memp_std.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/priv/memp_priv.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/priv/mem_priv.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/inet.h \
+ C:/Users/Tuan\ Anh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include/lwip/errno.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/client/WiFiClientImpl.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/core/FirebaseCore.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./client/FB_TCP_Client.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/session/FB_Session.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./core/FirebaseCore.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./rtdb/stream/FB_Stream.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./rtdb/stream/FB_MP_Stream.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./rtdb/stream/FB_Stream.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./rtdb/QueueInfo.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./rtdb/QueryFilter.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./rtdb/QueueManager.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./rtdb/QueueInfo.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/rtdb/FB_RTDB.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./session/FB_Session.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/rtdb/QueueInfo.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/rtdb/./stream/FB_MP_Stream.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/rtdb/./stream/FB_Stream.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/message/FCM.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/storage/FCS.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/gcs/GCS.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/firestore/FB_Firestore.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/./json/FirebaseJson.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/functions/FB_Functions.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/functions/FunctionsConfig.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/functions/PolicyBuilder.h \
+ .pio/libdeps/esp32-s3-devkitc-1/Firebase\ Arduino\ Client\ Library\ for\ ESP8266\ and\ ESP32/src/functions/FunctionsConfig.h \
  src/camera_pins.h

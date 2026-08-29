@@ -19,8 +19,8 @@
 #include "esp32-hal-ledc.h"
 #include "sdkconfig.h"
 #include "camera_index.h"
-#include "head_pose_detector.h"
 #include "firebase_manager.h"
+#include "sensor_manager.h"
 
 #if defined(ARDUINO_ARCH_ESP32) && defined(CONFIG_ARDUHAL_ESP_LOG)
 #include "esp32-hal-log.h"
@@ -97,11 +97,6 @@ static const char *_STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %
 
 httpd_handle_t stream_httpd = NULL;
 httpd_handle_t camera_httpd = NULL;
-
-// Trạng thái suy luận TinyML thời gian thực (chia sẻ an toàn giữa stream & predict)
-static int g_latest_class_id = 0;
-static float g_latest_confidence = 0.0f;
-static int64_t g_last_inference_time = 0;
 
 #if CONFIG_ESP_FACE_DETECT_ENABLED
 
@@ -591,19 +586,6 @@ static esp_err_t stream_handler(httpd_req_t *req)
         {
             _timestamp.tv_sec = fb->timestamp.tv_sec;
             _timestamp.tv_usec = fb->timestamp.tv_usec;
-
-            // Chạy suy luận AI trực tiếp trên frame của Video Stream mỗi 300ms
-            int64_t now_time = esp_timer_get_time();
-            if (now_time - g_last_inference_time > 300000) {
-                g_last_inference_time = now_time;
-                float conf = 0.0f;
-                int cid = run_head_pose_from_camera_fb(fb, &conf);
-                if (cid >= 0) {
-                    g_latest_class_id = cid;
-                    g_latest_confidence = conf;
-                    upload_head_pose_to_firebase(cid, get_head_pose_label(cid), conf);
-                }
-            }
 #if CONFIG_ESP_FACE_DETECT_ENABLED
     #if ARDUHAL_LOG_LEVEL >= ARDUHAL_LOG_LEVEL_INFO
             fr_start = esp_timer_get_time();
@@ -1208,150 +1190,1033 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESP32-S3 TinyML Head Pose AI Monitor</title>
+    <title>AI Ergonomics & Head Pose Monitor</title>
     <style>
         :root {
-            --bg-color: #0f172a;
-            --card-bg: #1e293b;
-            --text-primary: #f8fafc;
-            --text-secondary: #94a3b8;
-            --accent-blue: #38bdf8;
-            --accent-green: #22c55e;
-            --accent-warning: #f59e0b;
-            --accent-danger: #ef4444;
-            --accent-purple: #a855f7;
+            --bg-primary: #0a0f1d;
+            --bg-card: #131b2e;
+            --bg-card-hover: #1a253c;
+            --bg-glass: rgba(19, 27, 46, 0.85);
+            --border-color: #1e293b;
+            --border-glow: #38bdf8;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-cyan: #38bdf8;
+            --accent-blue: #0284c7;
+            --accent-green: #10b981;
+            --accent-amber: #f59e0b;
+            --accent-rose: #f43f5e;
+            --accent-purple: #818cf8;
         }
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        body { background: var(--bg-color); color: var(--text-primary); min-height: 100vh; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        header { text-align: center; margin-bottom: 25px; }
-        header h1 { font-size: 1.8rem; background: linear-gradient(135deg, #38bdf8, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 800; }
-        header p { color: var(--text-secondary); font-size: 0.95rem; margin-top: 5px; }
-        .container { display: grid; grid-template-columns: 1fr 340px; gap: 20px; max-width: 1050px; width: 100%; }
-        @media (max-width: 850px) { .container { grid-template-columns: 1fr; } }
-        .video-card { background: var(--card-bg); border-radius: 16px; padding: 16px; border: 1px solid #334155; display: flex; flex-direction: column; align-items: center; position: relative; }
-        .video-container { position: relative; width: 100%; aspect-ratio: 4/3; max-width: 640px; background: #000; border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-        .video-container img { width: 100%; height: 100%; object-fit: contain; }
-        .alert-banner { display: none; margin-top: 15px; width: 100%; padding: 12px 16px; border-radius: 10px; background: rgba(239, 68, 68, 0.2); border: 1px solid var(--accent-danger); color: #fca5a5; font-weight: 600; text-align: center; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
-        .panel { background: var(--card-bg); border-radius: 16px; padding: 20px; border: 1px solid #334155; display: flex; flex-direction: column; gap: 18px; }
-        .panel h2 { font-size: 1.2rem; color: var(--accent-blue); font-weight: 700; border-bottom: 1px solid #334155; padding-bottom: 10px; }
-        .status-badge { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 12px; font-weight: 700; font-size: 1.05rem; background: #334155; color: var(--text-primary); }
-        .status-badge.normal { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid #22c55e; }
-        .status-badge.warning { background: rgba(245, 158, 11, 0.25); color: #fbbf24; border: 1px solid #f59e0b; }
-        .status-badge.turned { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid #0284c7; }
-        .status-badge.tilted { background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid #9333ea; }
-        .metric-row { display: flex; justify-content: space-between; font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 6px; }
-        .progress-bar-bg { background: #0f172a; border-radius: 8px; height: 10px; overflow: hidden; width: 100%; }
-        .progress-bar-fill { background: linear-gradient(90deg, #38bdf8, #22c55e); height: 100%; width: 0%; transition: width 0.3s ease; }
-        .btn-group { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
-        .btn { padding: 12px; border-radius: 10px; border: none; font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 0.95rem; }
-        .btn-primary { background: #0284c7; color: white; }
-        .btn-primary:hover { background: #0369a1; }
-        .btn-secondary { background: #334155; color: white; }
-        .btn-secondary:hover { background: #475569; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif; }
+        body { background: var(--bg-primary); color: var(--text-main); min-height: 100vh; padding: 16px; display: flex; flex-direction: column; align-items: center; }
+        
+        /* Header */
+        header { width: 100%; max-width: 1280px; display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); backdrop-filter: blur(8px); flex-wrap: wrap; gap: 12px; }
+        .logo-area { display: flex; align-items: center; gap: 12px; }
+        .logo-icon { width: 38px; height: 38px; background: linear-gradient(135deg, #0284c7, #818cf8); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 0 15px rgba(56, 189, 248, 0.4); }
+        .header-title h1 { font-size: 1.35rem; font-weight: 800; background: linear-gradient(135deg, #38bdf8, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .header-title p { font-size: 0.82rem; color: var(--text-muted); }
+        .header-badges { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; background: rgba(30, 41, 59, 0.8); border: 1px solid #334155; }
+        .badge-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .badge-green .badge-dot { background: var(--accent-green); box-shadow: 0 0 8px var(--accent-green); }
+        .badge-amber .badge-dot { background: var(--accent-amber); box-shadow: 0 0 8px var(--accent-amber); }
+        .badge-red .badge-dot { background: var(--accent-rose); box-shadow: 0 0 8px var(--accent-rose); }
+        .btn-audio { background: #1e293b; border: 1px solid #334155; color: var(--text-main); padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s; }
+        .btn-audio.active { background: #0284c7; border-color: #38bdf8; box-shadow: 0 0 12px rgba(56, 189, 248, 0.3); }
+
+        /* Main Grid */
+        .dashboard-grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 20px; max-width: 1280px; width: 100%; }
+        @media (max-width: 960px) { .dashboard-grid { grid-template-columns: 1fr; } }
+
+        /* Left Column */
+        .left-col { display: flex; flex-direction: column; gap: 20px; }
+        .right-col { display: flex; flex-direction: column; gap: 20px; }
+
+        /* Cards */
+        .card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 18px; box-shadow: 0 4px 20px rgba(0,0,0,0.25); transition: border-color 0.2s; }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid #1e293b; padding-bottom: 10px; }
+        .card-title { font-size: 1.05rem; font-weight: 700; color: var(--accent-cyan); display: flex; align-items: center; gap: 8px; }
+
+        /* Stream Container */
+        .video-box { position: relative; width: 100%; aspect-ratio: 4/3; background: #050811; border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 1px solid #1e293b; }
+        .video-box img { width: 100%; height: 100%; object-fit: contain; }
+        #axis-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+        .video-hud { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; justify-content: space-between; pointer-events: none; z-index: 10; }
+        .hud-pill { background: rgba(15, 23, 42, 0.88); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.15); padding: 5px 12px; border-radius: 8px; font-size: 0.78rem; font-weight: 600; }
+        
+        .stream-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-top: 14px; }
+        .btn { padding: 10px 14px; border-radius: 10px; border: none; font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 0.88rem; text-align: center; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+        .btn-primary { background: linear-gradient(135deg, #0284c7, #0369a1); color: white; box-shadow: 0 2px 10px rgba(2, 132, 199, 0.3); }
+        .btn-primary:hover { background: #0284c7; transform: translateY(-1px); }
+        .btn-calibrate { background: linear-gradient(135deg, #f59e0b, #d97706); color: #0f172a; font-weight: 800; box-shadow: 0 2px 12px rgba(245, 158, 11, 0.4); border: 1px solid #fde68a; }
+        .btn-calibrate:hover { background: #fbbf24; transform: translateY(-1px); box-shadow: 0 4px 18px rgba(245, 158, 11, 0.6); }
+        .btn-calibrate.btn-calibrated { background: linear-gradient(135deg, #10b981, #059669); color: white; border-color: #6ee7b7; box-shadow: 0 2px 12px rgba(16, 185, 129, 0.4); }
+        .btn-secondary { background: #1e293b; color: var(--text-main); border: 1px solid #334155; }
+        .btn-secondary:hover { background: #334155; }
+
+        /* Toast notification */
+        #toast { position: fixed; bottom: 25px; right: 25px; background: rgba(15, 23, 42, 0.95); border: 1px solid var(--accent-cyan); color: #fff; padding: 12px 20px; border-radius: 12px; font-size: 0.9rem; font-weight: 600; box-shadow: 0 8px 30px rgba(0,0,0,0.5); z-index: 1000; transform: translateY(100px); opacity: 0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); pointer-events: none; }
+        #toast.show { transform: translateY(0); opacity: 1; }
+
+        /* Warning & Alert Banner */
+        .status-banner { border-radius: 14px; padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; gap: 14px; font-weight: 700; transition: all 0.3s; border: 2px solid transparent; }
+        .status-banner.status-good { background: rgba(16, 185, 129, 0.12); border-color: var(--accent-green); color: #34d399; }
+        .status-banner.status-caution { background: rgba(245, 158, 11, 0.15); border-color: var(--accent-amber); color: #fbbf24; }
+        .status-banner.status-danger { background: rgba(244, 63, 94, 0.2); border-color: var(--accent-rose); color: #fb7185; animation: pulseGlow 1.5s infinite; }
+        @keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 15px rgba(244, 63, 94, 0.3); } 50% { box-shadow: 0 0 28px rgba(244, 63, 94, 0.65); } }
+        .status-text-main { font-size: 1.15rem; }
+        .status-desc { font-size: 0.82rem; font-weight: 500; opacity: 0.9; margin-top: 3px; }
+
+        /* Active Alerts List */
+        .alert-list { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+        .alert-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 10px; background: rgba(30, 41, 59, 0.7); border-left: 4px solid var(--accent-amber); font-size: 0.88rem; }
+        .alert-item.danger { border-left-color: var(--accent-rose); background: rgba(244, 63, 94, 0.1); }
+        .alert-item.safe { border-left-color: var(--accent-green); background: rgba(16, 185, 129, 0.08); }
+        .alert-icon { font-size: 1.2rem; line-height: 1; margin-top: 2px; }
+        .alert-content strong { display: block; margin-bottom: 2px; font-weight: 700; color: #fff; }
+        .alert-content span { font-size: 0.82rem; color: var(--text-muted); }
+
+        /* Head Pose Angle Grid */
+        .angles-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+        @media (max-width: 600px) { .angles-grid { grid-template-columns: 1fr; } }
+        .angle-card { background: rgba(15, 23, 42, 0.6); border: 1px solid #1e293b; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; align-items: center; text-align: center; position: relative; overflow: hidden; }
+        .angle-label { font-size: 0.82rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        .angle-value { font-size: 1.9rem; font-weight: 800; margin: 6px 0; font-variant-numeric: tabular-nums; }
+        .angle-status { font-size: 0.75rem; padding: 3px 8px; border-radius: 6px; font-weight: 700; }
+        
+        /* Attitude Visualizers */
+        .pitch-meter-box { width: 100%; height: 38px; background: #0f172a; border-radius: 6px; margin-top: 8px; position: relative; overflow: hidden; border: 1px solid #334155; }
+        .pitch-zero-line { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: rgba(255,255,255,0.4); z-index: 2; }
+        .pitch-safe-zone { position: absolute; top: 0; bottom: 0; left: 33.3%; right: 33.3%; background: rgba(16, 185, 129, 0.15); }
+        .pitch-indicator-bar { position: absolute; top: 6px; bottom: 6px; width: 6px; border-radius: 3px; background: var(--accent-cyan); left: 50%; transform: translateX(-50%); transition: left 0.15s ease-out, background 0.2s; }
+        
+        .roll-horizon-box { width: 100%; height: 38px; background: #0f172a; border-radius: 6px; margin-top: 8px; position: relative; display: flex; align-items: center; justify-content: center; border: 1px solid #334155; overflow: hidden; }
+        .roll-line { width: 70%; height: 3px; background: var(--accent-cyan); border-radius: 2px; transform: rotate(0deg); transition: transform 0.15s ease-out, background 0.2s; }
+        .roll-center-dot { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: #fff; }
+
+        /* 3D Posture Model Visualizer */
+        .attitude-3d-card { background: rgba(15, 23, 42, 0.7); border: 1px solid #1e293b; border-radius: 12px; padding: 14px; display: flex; align-items: center; justify-content: space-around; margin-top: 14px; }
+        .head-model-container { perspective: 400px; width: 110px; height: 110px; display: flex; align-items: center; justify-content: center; }
+        .head-3d-box { width: 70px; height: 80px; background: linear-gradient(135deg, #1e293b, #334155); border: 2px solid var(--accent-cyan); border-radius: 20px 20px 24px 24px; position: relative; transition: transform 0.15s ease-out; transform-style: preserve-3d; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 0 20px rgba(56, 189, 248, 0.2); }
+        .head-eyes { display: flex; gap: 14px; margin-top: 5px; }
+        .head-eye { width: 8px; height: 8px; background: var(--accent-cyan); border-radius: 50%; box-shadow: 0 0 6px var(--accent-cyan); }
+        .head-nose { width: 4px; height: 12px; background: #f43f5e; border-radius: 2px; margin-top: 4px; box-shadow: 0 0 6px #f43f5e; }
+        .head-mouth { width: 18px; height: 3px; background: #64748b; border-radius: 2px; margin-top: 6px; }
+
+        /* Sensors & Biometrics Grid */
+        .sensors-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .sensor-card { background: rgba(15, 23, 42, 0.6); border: 1px solid #1e293b; border-radius: 12px; padding: 12px; }
+        .sensor-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px; }
+        .sensor-val { font-size: 1.4rem; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; }
+        .sensor-unit { font-size: 0.82rem; font-weight: 500; color: var(--text-muted); margin-left: 3px; }
+        .progress-bar-bg { width: 100%; height: 6px; background: #1e293b; border-radius: 3px; overflow: hidden; margin-top: 8px; }
+        .progress-bar-fill { height: 100%; width: 0%; background: var(--accent-cyan); transition: width 0.3s, background 0.3s; }
+
+        /* Advice Card */
+        .advice-box { background: rgba(15, 23, 42, 0.6); border: 1px solid #1e293b; border-radius: 12px; padding: 14px; font-size: 0.88rem; line-height: 1.5; color: #cbd5e1; }
+        .advice-box ul { padding-left: 18px; margin-top: 8px; }
+        .advice-box li { margin-bottom: 5px; }
+
+        /* Helpers */
+        .color-green { color: var(--accent-green) !important; }
+        .color-amber { color: var(--accent-amber) !important; }
+        .color-red { color: var(--accent-rose) !important; }
+        .bg-green { background: rgba(16, 185, 129, 0.2); color: var(--accent-green); }
+        .bg-amber { background: rgba(245, 158, 11, 0.2); color: var(--accent-amber); }
+        .bg-red { background: rgba(244, 63, 94, 0.2); color: var(--accent-rose); }
     </style>
 </head>
 <body>
     <header>
-        <h1>ESP32-S3 TinyML Head Pose Monitor</h1>
-        <p>Hệ thống giám sát tư thế đầu & cảnh báo cúi đầu (Text Neck) bằng trí tuệ nhân tạo nhúng</p>
-    </header>
-    <div class="container">
-        <div class="video-card">
-            <div class="video-container">
-                <img id="stream" src="" alt="Stream camera đang tắt">
-            </div>
-            <div id="alertBanner" class="alert-banner">
-                ⚠️ CẢNH BÁO: Phát hiện bạn đang CÚI ĐẦU quá lâu! Hãy ngồi thẳng lại!
+        <div class="logo-area">
+            <div class="logo-icon">👁️</div>
+            <div class="header-title">
+                <h1>GPBL Ergonomics & Posture AI</h1>
+                <p>Giám Sát Tư Thế & Cảnh Báo Góc Pitch - Roll Thời Gian Thực</p>
             </div>
         </div>
-        <div class="panel">
-            <h2>Kết quả dự đoán AI</h2>
-            <div>
-                <div class="metric-row"><span>Tư thế hiện tại:</span></div>
-                <div id="statusBadge" class="status-badge">Đang kết nối...</div>
+        <div class="header-badges">
+            <div class="badge badge-green" id="badge-cam">
+                <span class="badge-dot"></span>
+                <span>ESP32 Cam (172.20.10.3)</span>
             </div>
-            <div>
-                <div class="metric-row">
-                    <span>Độ tin cậy (Confidence):</span>
-                    <span id="confVal">0%</span>
+            <div class="badge badge-green" id="badge-firebase">
+                <span class="badge-dot"></span>
+                <span id="firebase-status-text">Firebase RTDB: Đang kết nối...</span>
+            </div>
+            <button id="btn-audio" class="btn-audio active" onclick="toggleAudioAlarm()">
+                <span id="audio-icon">🔔</span>
+                <span id="audio-label">Chuông Báo: BẬT</span>
+            </button>
+        </div>
+    </header>
+
+    <div class="dashboard-grid">
+        <!-- LEFT COLUMN: Live Video & Warnings -->
+        <div class="left-col">
+            <!-- Video Stream Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">📹 Video Stream & Trục Tọa Độ 3D (Nose Axis)</div>
+                    <span class="badge badge-green" id="stream-status-badge"><span class="badge-dot"></span> <span id="stream-state-text">STREAM LIVE</span></span>
                 </div>
-                <div class="progress-bar-bg">
-                    <div id="confBar" class="progress-bar-fill"></div>
+                <div class="video-box" id="video-container">
+                    <img id="stream-view" src="" alt="Đang kết nối luồng camera...">
+                    <!-- 3D Axes Canvas Overlay -->
+                    <canvas id="axis-canvas"></canvas>
+                    <div class="video-hud">
+                        <div class="hud-pill" id="hud-angles">P: 0.0° | R: 0.0° | Y: 0.0°</div>
+                        <div class="hud-pill" id="hud-calib-pill" style="display:none; color: #fbbf24; border-color: #f59e0b;">🎯 Đã Calibrate Gốc</div>
+                        <div class="hud-pill" id="hud-distance">Khoảng cách: -- cm</div>
+                    </div>
+                </div>
+                <div class="stream-controls">
+                    <button id="btn-toggle-stream" class="btn btn-primary" onclick="toggleStream()">⏹ Tắt Stream</button>
+                    <button id="btn-calibrate" class="btn btn-calibrate" onclick="calibrateOrigin()" title="Đặt tư thế ngồi hiện tại làm mốc 0 độ">🎯 Calibrate Gốc (0°)</button>
+                    <button id="btn-toggle-axes" class="btn btn-secondary" onclick="toggleAxesOverlay()">🧭 Ẩn/Hiện Trục 3D</button>
+                    <button id="btn-reset-calib" class="btn btn-secondary" onclick="resetCalibration()">🔄 Reset Gốc</button>
+                    <button class="btn btn-secondary" onclick="toggleFullscreen()">⛶ Toàn Màn Hình</button>
+                    <a href="/capture" target="_blank" class="btn btn-secondary">📸 Chụp Ảnh</a>
                 </div>
             </div>
-            <div>
-                <div class="metric-row">
-                    <span>Thời gian suy luận (Latency):</span>
-                    <span id="latencyVal">-- ms</span>
+
+            <!-- Posture Status & Warnings Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">🚨 Trung Tâm Cảnh Báo Tư Thế & Sức Khỏe</div>
+                    <span id="last-sync-time" style="font-size: 0.78rem; color: var(--text-muted);">Cập nhật: Vừa xong</span>
                 </div>
-                <div class="metric-row">
-                    <span>Trạng thái kết nối:</span>
-                    <span id="connStatus" style="color: #22c55e;">Hoạt động</span>
+
+                <!-- Main Status Banner -->
+                <div id="status-banner" class="status-banner status-good">
+                    <div>
+                        <div class="status-text-main" id="status-title">🟢 TƯ THẾ TỐT - ĐẠT CHUẨN</div>
+                        <div class="status-desc" id="status-desc">Bạn đang duy trì tư thế ngồi làm việc chuẩn công thái học.</div>
+                    </div>
+                    <div id="status-big-icon" style="font-size: 2rem;">✅</div>
+                </div>
+
+                <!-- Active Warning List -->
+                <div class="alert-list" id="alert-list">
+                    <div class="alert-item safe">
+                        <div class="alert-icon">✨</div>
+                        <div class="alert-content">
+                            <strong>Trạng thái bình thường</strong>
+                            <span>Góc nghiêng đầu và khoảng cách ngồi đều nằm trong giới hạn an toàn.</span>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="btn-group">
-                <button id="toggleStreamBtn" class="btn btn-primary" onclick="toggleStream()">Bật Video Stream</button>
-                <button class="btn btn-secondary" onclick="fetchPrediction()">Dự đoán 1 lần (/predict)</button>
+        </div>
+
+        <!-- RIGHT COLUMN: Head Angles, Sensors & Advice -->
+        <div class="right-col">
+            <!-- Head Pose Angles Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">📐 Góc Tư Thế Đầu (Pitch - Roll - Yaw)</div>
+                    <span style="font-size: 0.8rem; color: var(--text-muted);">Giới hạn an toàn: ±15°</span>
+                </div>
+                
+                <div class="angles-grid">
+                    <!-- Pitch Card -->
+                    <div class="angle-card" id="card-pitch">
+                        <span class="angle-label">Góc Pitch (Cúi/Ngửa)</span>
+                        <div class="angle-value" id="val-pitch">0.0°</div>
+                        <span class="angle-status bg-green" id="tag-pitch">Chuẩn</span>
+                        <div class="pitch-meter-box">
+                            <div class="pitch-zero-line"></div>
+                            <div class="pitch-safe-zone"></div>
+                            <div class="pitch-indicator-bar" id="meter-pitch"></div>
+                        </div>
+                    </div>
+
+                    <!-- Roll Card -->
+                    <div class="angle-card" id="card-roll">
+                        <span class="angle-label">Góc Roll (Nghiêng)</span>
+                        <div class="angle-value" id="val-roll">0.0°</div>
+                        <span class="angle-status bg-green" id="tag-roll">Cân bằng</span>
+                        <div class="roll-horizon-box">
+                            <div class="roll-line" id="meter-roll"></div>
+                            <div class="roll-center-dot"></div>
+                        </div>
+                    </div>
+
+                    <!-- Yaw Card -->
+                    <div class="angle-card" id="card-yaw">
+                        <span class="angle-label">Góc Yaw (Quay)</span>
+                        <div class="angle-value" id="val-yaw">0.0°</div>
+                        <span class="angle-status bg-green" id="tag-yaw">Thẳng</span>
+                        <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 10px;">Hướng nhìn chính diện</div>
+                    </div>
+                </div>
+
+                <!-- 3D Posture Model Visualizer -->
+                <div class="attitude-3d-card">
+                    <div class="head-model-container">
+                        <div class="head-3d-box" id="head-3d">
+                            <div class="head-eyes">
+                                <div class="head-eye"></div>
+                                <div class="head-eye"></div>
+                            </div>
+                            <div class="head-nose"></div>
+                            <div class="head-mouth"></div>
+                        </div>
+                    </div>
+                    <div style="flex: 1; padding-left: 16px;">
+                        <strong style="font-size: 0.92rem; color: var(--text-main); display: block; margin-bottom: 4px;">Mô Phỏng Tư Thế Đầu 3D (Tâm tại Mũi)</strong>
+                        <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">
+                            Trục 3D trên camera và mô hình 3D xoay quanh tâm mũi theo góc <strong>Pitch</strong> (X-Đỏ), <strong>Roll</strong> (Y-Xanh lục) và <strong>Yaw</strong> (Z-Xanh lam).
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sensors & Environment Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">📊 Cảm Biến Môi Trường & Thị Lực</div>
+                    <span style="font-size: 0.8rem; color: var(--text-muted);">ESP32-S3 + LDR + Siêu âm</span>
+                </div>
+
+                <div class="sensors-grid">
+                    <!-- Distance Sensor -->
+                    <div class="sensor-card">
+                        <div class="sensor-header">
+                            <span>Khoảng cách mắt</span>
+                            <span id="dist-status" class="color-green">Chuẩn (50-70cm)</span>
+                        </div>
+                        <div>
+                            <span class="sensor-val" id="val-dist">55.0</span>
+                            <span class="sensor-unit">cm</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill" id="bar-dist" style="width: 55%;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Ambient Light -->
+                    <div class="sensor-card">
+                        <div class="sensor-header">
+                            <span>Độ sáng phòng</span>
+                            <span id="lux-status" class="color-green">Đạt chuẩn</span>
+                        </div>
+                        <div>
+                            <span class="sensor-val" id="val-lux">450</span>
+                            <span class="sensor-unit">Lux</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill" id="bar-lux" style="width: 60%; background: #f59e0b;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Blink Counter -->
+                    <div class="sensor-card">
+                        <div class="sensor-header">
+                            <span>Số lần chớp mắt</span>
+                            <span id="blink-freq" class="color-green">Bình thường</span>
+                        </div>
+                        <div>
+                            <span class="sensor-val" id="val-blinks">0</span>
+                            <span class="sensor-unit">lần</span>
+                        </div>
+                    </div>
+
+                    <!-- EAR Ratio -->
+                    <div class="sensor-card">
+                        <div class="sensor-header">
+                            <span>Chỉ số mở mắt (EAR)</span>
+                            <span id="ear-status" class="color-green">Mắt mở</span>
+                        </div>
+                        <div>
+                            <span class="sensor-val" id="val-ear">0.32</span>
+                            <span class="sensor-unit">EAR</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI LLM Advice Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">💡 Lời Khuyên Công Thái Học (AI Advice)</div>
+                </div>
+                <div class="advice-box" id="advice-content">
+                    <strong style="color: var(--accent-cyan); display: block; margin-bottom: 6px;">Lời khuyên thông minh:</strong>
+                    <div id="advice-text">
+                        Đang tải khuyến nghị công thái học từ hệ thống AI...
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-    <script>
-        const streamImg = document.getElementById('stream');
-        const statusBadge = document.getElementById('statusBadge');
-        const confVal = document.getElementById('confVal');
-        const confBar = document.getElementById('confBar');
-        const latencyVal = document.getElementById('latencyVal');
-        const alertBanner = document.getElementById('alertBanner');
-        const toggleStreamBtn = document.getElementById('toggleStreamBtn');
 
-        let streaming = false;
-        let predictInterval = null;
+    <!-- Toast Notification -->
+    <div id="toast"></div>
+
+    <!-- Script Logic -->
+    <script>
+        // DOM Elements
+        const streamView = document.getElementById('stream-view');
+        const axisCanvas = document.getElementById('axis-canvas');
+        const btnToggleStream = document.getElementById('btn-toggle-stream');
+        const btnCalibrate = document.getElementById('btn-calibrate');
+        const streamStateText = document.getElementById('stream-state-text');
+        const streamBadge = document.getElementById('stream-status-badge');
+        const hudAngles = document.getElementById('hud-angles');
+        const hudDistance = document.getElementById('hud-distance');
+        const hudCalibPill = document.getElementById('hud-calib-pill');
+        const toast = document.getElementById('toast');
+
+        // Angle Displays
+        const valPitch = document.getElementById('val-pitch');
+        const valRoll = document.getElementById('val-roll');
+        const valYaw = document.getElementById('val-yaw');
+        const tagPitch = document.getElementById('tag-pitch');
+        const tagRoll = document.getElementById('tag-roll');
+        const tagYaw = document.getElementById('tag-yaw');
+        const meterPitch = document.getElementById('meter-pitch');
+        const meterRoll = document.getElementById('meter-roll');
+        const head3D = document.getElementById('head-3d');
+
+        // Status & Alerts
+        const statusBanner = document.getElementById('status-banner');
+        const statusTitle = document.getElementById('status-title');
+        const statusDesc = document.getElementById('status-desc');
+        const statusBigIcon = document.getElementById('status-big-icon');
+        const alertList = document.getElementById('alert-list');
+        const lastSyncTime = document.getElementById('last-sync-time');
+
+        // Sensors
+        const valDist = document.getElementById('val-dist');
+        const barDist = document.getElementById('bar-dist');
+        const distStatus = document.getElementById('dist-status');
+        const valLux = document.getElementById('val-lux');
+        const barLux = document.getElementById('bar-lux');
+        const luxStatus = document.getElementById('lux-status');
+        const valBlinks = document.getElementById('val-blinks');
+        const valEar = document.getElementById('val-ear');
+        const earStatus = document.getElementById('ear-status');
+        const adviceText = document.getElementById('advice-text');
+        const firebaseStatusText = document.getElementById('firebase-status-text');
+
+        // State Variables
+        let isStreaming = false;
+        let show3DAxes = true;
+        let audioAlarmEnabled = true;
+        let audioCtx = null;
+        let lastBeepTime = 0;
+        
+        // Raw & Calibrated Head Pose Angles
+        let rawPitch = 0.0, rawRoll = 0.0, rawYaw = 0.0;
+        let calibPitch = 0.0, calibRoll = 0.0, calibYaw = 0.0;
+        let isCalibrated = false;
+        let currentPitch = 0.0, currentRoll = 0.0, currentYaw = 0.0;
+        
+        // Interpolated angles for 60fps smooth canvas render
+        let renderPitch = 0.0, renderRoll = 0.0, renderYaw = 0.0;
+
+        // Nose Coordinates (Normalized 0.0 - 1.0)
+        let noseNormX = 0.5;
+        let noseNormY = 0.55;
+        let targetNoseX = 0.5;
+        let targetNoseY = 0.55;
+
+        let currentDist = 55.0;
+        let currentLux = 400;
+
+        const FIREBASE_BASE = 'https://gpbl-iot-llms-default-rtdb.asia-southeast1.firebasedatabase.app';
+
+        // Toast Helper
+        let toastTimeout = null;
+        function alertToast(msg) {
+            toast.innerText = msg;
+            toast.classList.add('show');
+            if (toastTimeout) clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => toast.classList.remove('show'), 3500);
+        }
+
+        // Initialize Video Stream
+        function initStream() {
+            const streamUrl = window.location.protocol + '//' + window.location.hostname + ':81/stream';
+            streamView.src = streamUrl;
+            isStreaming = true;
+            btnToggleStream.innerText = '⏹ Tắt Stream';
+            btnToggleStream.classList.add('btn-primary');
+            streamStateText.innerText = 'STREAM LIVE';
+            streamBadge.className = 'badge badge-green';
+        }
 
         function toggleStream() {
-            if (!streaming) {
-                streamImg.src = location.origin + '/stream';
-                toggleStreamBtn.innerText = 'Tắt Video Stream';
-                streaming = true;
+            if (isStreaming) {
+                streamView.src = '';
+                btnToggleStream.innerText = '▶ Bật Stream';
+                btnToggleStream.className = 'btn btn-secondary';
+                streamStateText.innerText = 'STREAM OFF';
+                streamBadge.className = 'badge badge-red';
+                isStreaming = false;
             } else {
-                streamImg.src = '';
-                toggleStreamBtn.innerText = 'Bật Video Stream';
-                streaming = false;
+                initStream();
             }
         }
 
-        async function fetchPrediction() {
-            const t0 = performance.now();
+        function reloadStream() {
+            streamView.src = '';
+            setTimeout(initStream, 300);
+        }
+
+        function toggleFullscreen() {
+            const container = document.getElementById('video-container');
+            if (!document.fullscreenElement) {
+                container.requestFullscreen().catch(err => console.log(err));
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        function toggleAxesOverlay() {
+            show3DAxes = !show3DAxes;
+            const btn = document.getElementById('btn-toggle-axes');
+            if (show3DAxes) {
+                btn.innerText = '🧭 Ẩn Trục 3D';
+                btn.classList.add('btn-primary');
+            } else {
+                btn.innerText = '🧭 Hiện Trục 3D';
+                btn.classList.remove('btn-primary');
+            }
+        }
+
+        // Calibrate Zero-Angle Origin
+        function calibrateOrigin() {
+            calibPitch = rawPitch;
+            calibRoll = rawRoll;
+            calibYaw = rawYaw;
+            isCalibrated = true;
+
+            btnCalibrate.innerText = '🎯 Đã Calibrate (0°)';
+            btnCalibrate.classList.add('btn-calibrated');
+            hudCalibPill.style.display = 'inline-block';
+
+            // Send calibration request to Firebase RTDB so Python AI worker synchronizes
+            fetch(`${FIREBASE_BASE}/ai_data.json`, {
+                method: 'PATCH',
+                body: JSON.stringify({ calibrate_req: Date.now() }),
+                headers: { 'Content-Type': 'application/json' }
+            }).catch(e => {});
+
+            playCalibChime();
+            alertToast('🎯 Đã hiệu chuẩn gốc tọa độ chuẩn (0°, 0°, 0°) tại vị trí ngồi hiện tại!');
+        }
+
+        function resetCalibration() {
+            calibPitch = 0.0;
+            calibRoll = 0.0;
+            calibYaw = 0.0;
+            isCalibrated = false;
+
+            btnCalibrate.innerText = '🎯 Calibrate Gốc (0°)';
+            btnCalibrate.classList.remove('btn-calibrated');
+            hudCalibPill.style.display = 'none';
+
+            alertToast('🔄 Đã đặt lại gốc tọa độ về giá trị thô ban đầu.');
+        }
+
+        // Web Audio Synthesizer Beep
+        function toggleAudioAlarm() {
+            audioAlarmEnabled = !audioAlarmEnabled;
+            const btn = document.getElementById('btn-audio');
+            const icon = document.getElementById('audio-icon');
+            const label = document.getElementById('audio-label');
+            if (audioAlarmEnabled) {
+                btn.classList.add('active');
+                icon.innerText = '🔔';
+                label.innerText = 'Chuông Báo: BẬT';
+            } else {
+                btn.classList.remove('active');
+                icon.innerText = '🔕';
+                label.innerText = 'Chuông Báo: TẮT';
+            }
+        }
+
+        function playWarningBeep() {
+            if (!audioAlarmEnabled) return;
+            const now = Date.now();
+            if (now - lastBeepTime < 3500) return;
+            lastBeepTime = now;
+
             try {
-                const res = await fetch(location.origin + '/predict');
-                const data = await res.json();
-                const dt = Math.round(performance.now() - t0);
-
-                latencyVal.innerText = dt + ' ms';
-                const pct = Math.round(data.confidence * 100);
-                confVal.innerText = pct + '%';
-                confBar.style.width = pct + '%';
-
-                statusBadge.innerText = data.class_name;
-                statusBadge.className = 'status-badge ';
-
-                if (data.class_id === 0) statusBadge.classList.add('normal');
-                else if (data.class_id === 1) statusBadge.classList.add('warning');
-                else if (data.class_id === 2) statusBadge.classList.add('turned');
-                else if (data.class_id === 3) statusBadge.classList.add('tilted');
-
-                if (data.class_id === 1) {
-                    alertBanner.style.display = 'block';
-                } else {
-                    alertBanner.style.display = 'none';
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 }
-            } catch (err) {
-                console.error(err);
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(587.33, audioCtx.currentTime + 0.18);
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.26);
+            } catch (e) {}
+        }
+
+        function playCalibChime() {
+            try {
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+                osc.frequency.exponentialRampToValueAtTime(1046.50, audioCtx.currentTime + 0.15); // C6
+                gain.gain.setValueAtTime(0.35, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.22);
+            } catch (e) {}
+        }
+
+        // Draw 3D Axes Centered at Nose on Canvas
+        function draw3DAxesCanvas() {
+            if (!axisCanvas) return;
+            const ctx = axisCanvas.getContext('2d');
+            
+            // Adjust canvas resolution to element dimensions
+            const rect = axisCanvas.getBoundingClientRect();
+            if (axisCanvas.width !== rect.width || axisCanvas.height !== rect.height) {
+                axisCanvas.width = rect.width;
+                axisCanvas.height = rect.height;
+            }
+
+            ctx.clearRect(0, 0, axisCanvas.width, axisCanvas.height);
+
+            if (!show3DAxes || axisCanvas.width <= 0 || axisCanvas.height <= 0) return;
+
+            // Interpolate angles & nose position for 60fps smoothness
+            renderPitch += (currentPitch - renderPitch) * 0.2;
+            renderRoll  += (currentRoll  - renderRoll)  * 0.2;
+            renderYaw   += (currentYaw   - renderYaw)   * 0.2;
+            noseNormX   += (targetNoseX  - noseNormX)   * 0.15;
+            noseNormY   += (targetNoseY  - noseNormY)   * 0.15;
+
+            // Center of coordinate system (Nose position)
+            const originX = axisCanvas.width * noseNormX;
+            const originY = axisCanvas.height * noseNormY;
+            const axisLength = Math.min(rect.width, rect.height) * 0.22; // Responsive length
+
+            // Convert angles to radians
+            const p = (renderPitch * Math.PI) / 180.0;
+            const r = (renderRoll * Math.PI) / 180.0;
+            const y = (renderYaw * Math.PI) / 180.0;
+
+            // 3D Rotation Matrix combining Yaw (Y), Pitch (X), Roll (Z)
+            const cp = Math.cos(p), sp = Math.sin(p);
+            const cr = Math.cos(r), sr = Math.sin(r);
+            const cy = Math.cos(y), sy = Math.sin(y);
+
+            // Function to rotate a 3D vector [vx, vy, vz]
+            function rotatePoint(vx, vy, vz) {
+                // Rx (Pitch)
+                const y1 = vy * cp - vz * sp;
+                const z1 = vy * sp + vz * cp;
+                // Ry (Yaw)
+                const x2 = vx * cy + z1 * sy;
+                const z2 = -vx * sy + z1 * cy;
+                // Rz (Roll)
+                const x3 = x2 * cr - y1 * sr;
+                const y3 = x2 * sr + y1 * cr;
+                return { x: originX + x3, y: originY - y3 }; // Screen 2D projection
+            }
+
+            // Define 3D axis endpoints from origin
+            // X-Axis (Forward/Pitch Axis - Red): pointing forward and slightly down
+            const pX = rotatePoint(0, 0, axisLength);
+            // Y-Axis (Right/Roll Axis - Green): pointing right
+            const pY = rotatePoint(axisLength, 0, 0);
+            // Z-Axis (Up/Yaw Axis - Blue): pointing up
+            const pZ = rotatePoint(0, axisLength, 0);
+
+            // Draw Axis Line with Arrow & Label
+            function drawAxis(target, color, label, angleVal) {
+                ctx.beginPath();
+                ctx.moveTo(originX, originY);
+                ctx.lineTo(target.x, target.y);
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 3.5;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+
+                // Arrow Head
+                const angle = Math.atan2(target.y - originY, target.x - originX);
+                const headLen = 10;
+                ctx.beginPath();
+                ctx.moveTo(target.x, target.y);
+                ctx.lineTo(target.x - headLen * Math.cos(angle - Math.PI / 6), target.y - headLen * Math.sin(angle - Math.PI / 6));
+                ctx.lineTo(target.x - headLen * Math.cos(angle + Math.PI / 6), target.y - headLen * Math.sin(angle + Math.PI / 6));
+                ctx.closePath();
+                ctx.fillStyle = color;
+                ctx.fill();
+
+                // Text Badge
+                ctx.font = 'bold 12px "Segoe UI", sans-serif';
+                ctx.fillStyle = color;
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+                ctx.shadowBlur = 6;
+                ctx.fillText(`${label}: ${(angleVal >= 0 ? '+' : '') + angleVal.toFixed(1)}°`, target.x + 8, target.y + 4);
+                ctx.shadowBlur = 0;
+            }
+
+            // Draw Axes
+            drawAxis(pX, '#f43f5e', 'X (Pitch)', renderPitch);
+            drawAxis(pY, '#10b981', 'Y (Roll)', renderRoll);
+            drawAxis(pZ, '#38bdf8', 'Z (Yaw)', renderYaw);
+
+            // Draw Origin (Nose Center)
+            ctx.beginPath();
+            ctx.arc(originX, originY, 6, 0, 2 * Math.PI);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(originX, originY, 11, 0, 2 * Math.PI);
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.8)';
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+
+            // Label at Origin
+            ctx.font = '600 11px "Segoe UI", sans-serif';
+            ctx.fillStyle = '#f8fafc';
+            ctx.fillText('👃 Mũi (Tâm 0,0,0)', originX - 45, originY + 22);
+        }
+
+        // Animation Render Loop
+        function animate() {
+            draw3DAxesCanvas();
+            requestAnimationFrame(animate);
+        }
+
+        // Update Dashboard UI with Data
+        function updateDashboard(aiData, sensorData) {
+            const nowStr = new Date().toLocaleTimeString('vi-VN');
+            lastSyncTime.innerText = 'Cập nhật: ' + nowStr;
+
+            // Pitch, Roll, Yaw
+            if (aiData && aiData.pitch !== undefined) rawPitch = parseFloat(aiData.pitch);
+            if (aiData && aiData.roll !== undefined) rawRoll = parseFloat(aiData.roll);
+            if (aiData && aiData.yaw !== undefined) rawYaw = parseFloat(aiData.yaw);
+
+            // Nose 2D Coordinates if passed from AI tracking
+            if (aiData && aiData.nose_x !== undefined) targetNoseX = Math.max(0.15, Math.min(0.85, parseFloat(aiData.nose_x)));
+            if (aiData && aiData.nose_y !== undefined) targetNoseY = Math.max(0.15, Math.min(0.85, parseFloat(aiData.nose_y)));
+
+            // Apply Calibration Offsets
+            currentPitch = rawPitch - calibPitch;
+            currentRoll = rawRoll - calibRoll;
+            currentYaw = rawYaw - calibYaw;
+
+            // Sensor Distance & Lux
+            if (sensorData && sensorData.distance !== undefined && sensorData.distance >= 0) {
+                currentDist = parseFloat(sensorData.distance);
+            } else if (aiData && aiData.distance_cm !== undefined && aiData.distance_cm > 0) {
+                currentDist = parseFloat(aiData.distance_cm);
+            }
+            if (sensorData && sensorData.lux !== undefined) {
+                currentLux = Math.round(sensorData.lux);
+            }
+
+            // Blinks & EAR
+            if (aiData && aiData.blinks !== undefined) {
+                valBlinks.innerText = aiData.blinks;
+            }
+            if (aiData && aiData.ear !== undefined) {
+                valEar.innerText = parseFloat(aiData.ear).toFixed(2);
+                if (aiData.ear < 0.26) {
+                    earStatus.innerText = 'Nhắm mắt / Mỏi';
+                    earStatus.className = 'color-amber';
+                } else {
+                    earStatus.innerText = 'Mắt mở tốt';
+                    earStatus.className = 'color-green';
+                }
+            }
+
+            // Render Numbers
+            valPitch.innerText = (currentPitch >= 0 ? '+' : '') + currentPitch.toFixed(1) + '°';
+            valRoll.innerText = (currentRoll >= 0 ? '+' : '') + currentRoll.toFixed(1) + '°';
+            valYaw.innerText = (currentYaw >= 0 ? '+' : '') + currentYaw.toFixed(1) + '°';
+            valDist.innerText = currentDist.toFixed(1);
+            valLux.innerText = currentLux;
+
+            // HUD
+            hudAngles.innerText = `P: ${(currentPitch >= 0 ? '+' : '') + currentPitch.toFixed(1)}° | R: ${(currentRoll >= 0 ? '+' : '') + currentRoll.toFixed(1)}° | Y: ${(currentYaw >= 0 ? '+' : '') + currentYaw.toFixed(1)}°`;
+            hudDistance.innerText = `Khoảng cách: ${currentDist.toFixed(1)} cm`;
+
+            // Active Warnings Evaluation
+            const warnings = [];
+            let isDanger = false;
+            let isCaution = false;
+
+            // 1. Pitch Warning (> 15° or < -15°)
+            if (currentPitch > 15) {
+                isDanger = true;
+                warnings.push({
+                    type: 'danger',
+                    icon: '🚨',
+                    title: `Cúi đầu quá sâu (${(currentPitch >= 0 ? '+' : '') + currentPitch.toFixed(1)}° > 15°)`,
+                    desc: 'Nguy cơ thoái hóa đốt sống cổ & gù lưng. Hãy nâng cao màn hình hoặc ngẩng thẳng đầu!'
+                });
+                tagPitch.innerText = 'Cúi quá sâu';
+                tagPitch.className = 'angle-status bg-red';
+                valPitch.className = 'angle-value color-red';
+                meterPitch.style.background = 'var(--accent-rose)';
+            } else if (currentPitch < -15) {
+                isDanger = true;
+                warnings.push({
+                    type: 'danger',
+                    icon: '🚨',
+                    title: `Ngửa đầu quá cao (${currentPitch.toFixed(1)}° < -15°)`,
+                    desc: 'Gây căng cơ gáy cổ. Hãy hạ tầm mắt ngang 1/3 phía trên màn hình!'
+                });
+                tagPitch.innerText = 'Ngửa quá cao';
+                tagPitch.className = 'angle-status bg-red';
+                valPitch.className = 'angle-value color-red';
+                meterPitch.style.background = 'var(--accent-rose)';
+            } else if (Math.abs(currentPitch) > 10) {
+                isCaution = true;
+                tagPitch.innerText = currentPitch > 0 ? 'Hơi cúi' : 'Hơi ngửa';
+                tagPitch.className = 'angle-status bg-amber';
+                valPitch.className = 'angle-value color-amber';
+                meterPitch.style.background = 'var(--accent-amber)';
+            } else {
+                tagPitch.innerText = 'Chuẩn (Tốt)';
+                tagPitch.className = 'angle-status bg-green';
+                valPitch.className = 'angle-value color-green';
+                meterPitch.style.background = 'var(--accent-cyan)';
+            }
+
+            // Pitch Indicator Position (-45 to +45 deg mapped to 0% to 100%)
+            const clampedPitch = Math.max(-45, Math.min(45, currentPitch));
+            const pitchPercent = ((clampedPitch + 45) / 90) * 100;
+            meterPitch.style.left = pitchPercent + '%';
+
+            // 2. Roll Warning (|Roll| > 15°)
+            if (Math.abs(currentRoll) > 15) {
+                isDanger = true;
+                warnings.push({
+                    type: 'danger',
+                    icon: '🚨',
+                    title: `Nghiêng đầu lệch trục (${currentRoll.toFixed(1)}°)`,
+                    desc: 'Gây vẹo cột sống cổ. Hãy giữ đầu thẳng và cân bằng hai bên vai!'
+                });
+                tagRoll.innerText = currentRoll > 0 ? 'Nghiêng Phải' : 'Nghiêng Trái';
+                tagRoll.className = 'angle-status bg-red';
+                valRoll.className = 'angle-value color-red';
+                meterRoll.style.background = 'var(--accent-rose)';
+            } else if (Math.abs(currentRoll) > 10) {
+                isCaution = true;
+                tagRoll.innerText = currentRoll > 0 ? 'Nghiêng nhẹ Phải' : 'Nghiêng nhẹ Trái';
+                tagRoll.className = 'angle-status bg-amber';
+                valRoll.className = 'angle-value color-amber';
+                meterRoll.style.background = 'var(--accent-amber)';
+            } else {
+                tagRoll.innerText = 'Cân bằng (Tốt)';
+                tagRoll.className = 'angle-status bg-green';
+                valRoll.className = 'angle-value color-green';
+                meterRoll.style.background = 'var(--accent-cyan)';
+            }
+
+            // Roll Horizon Rotation
+            meterRoll.style.transform = `rotate(${-currentRoll}deg)`;
+
+            // 3. 3D Model Transformation
+            head3D.style.transform = `rotateX(${-currentPitch * 1.2}deg) rotateZ(${-currentRoll}deg) rotateY(${currentYaw * 0.8}deg)`;
+            if (isDanger) {
+                head3D.style.borderColor = 'var(--accent-rose)';
+                head3D.style.boxShadow = '0 0 20px rgba(244, 63, 94, 0.4)';
+            } else if (isCaution) {
+                head3D.style.borderColor = 'var(--accent-amber)';
+                head3D.style.boxShadow = '0 0 15px rgba(245, 158, 11, 0.3)';
+            } else {
+                head3D.style.borderColor = 'var(--accent-cyan)';
+                head3D.style.boxShadow = '0 0 20px rgba(56, 189, 248, 0.2)';
+            }
+
+            // 4. Distance Warning (< 40cm)
+            const distPercent = Math.min(100, (currentDist / 100) * 100);
+            barDist.style.width = distPercent + '%';
+
+            if (currentDist > 0 && currentDist < 40) {
+                isDanger = true;
+                warnings.push({
+                    type: 'danger',
+                    icon: '📏',
+                    title: `Ngồi quá gần màn hình (${currentDist.toFixed(1)} cm < 40 cm)`,
+                    desc: 'Khoảng cách mắt quá gần! Nguy cơ tăng độ cận và nhức mỏi mắt. Hãy lùi về 50 - 70 cm!'
+                });
+                distStatus.innerText = 'Quá gần (<40cm)';
+                distStatus.className = 'color-red';
+                barDist.style.background = 'var(--accent-rose)';
+            } else if (currentDist >= 40 && currentDist <= 75) {
+                distStatus.innerText = 'Chuẩn (50-70cm)';
+                distStatus.className = 'color-green';
+                barDist.style.background = 'var(--accent-green)';
+            } else if (currentDist > 75) {
+                distStatus.innerText = 'Hơi xa (>75cm)';
+                distStatus.className = 'color-amber';
+                barDist.style.background = 'var(--accent-amber)';
+            }
+
+            // 5. Lighting Warning (< 300 Lux)
+            const luxPercent = Math.min(100, (currentLux / 1000) * 100);
+            barLux.style.width = luxPercent + '%';
+
+            if (currentLux < 300) {
+                warnings.push({
+                    type: 'caution',
+                    icon: '💡',
+                    title: `Môi trường thiếu ánh sáng (${currentLux} Lux < 300 Lux)`,
+                    desc: 'Ánh sáng phòng quá tối gây mỏi mắt và suy giảm thị lực. Hãy bật thêm đèn bàn!'
+                });
+                luxStatus.innerText = 'Thiếu sáng (<300)';
+                luxStatus.className = 'color-amber';
+                barLux.style.background = 'var(--accent-amber)';
+            } else {
+                luxStatus.innerText = 'Đủ sáng (Chuẩn)';
+                luxStatus.className = 'color-green';
+                barLux.style.background = 'var(--accent-green)';
+            }
+
+            // Render Banner & Alerts
+            if (isDanger) {
+                statusBanner.className = 'status-banner status-danger';
+                statusTitle.innerText = '🔴 CẢNH BÁO NGUY HIỂM: SAI TƯ THẾ!';
+                statusDesc.innerText = 'Phát hiện tư thế ngồi không đúng chuẩn. Vui lòng điều chỉnh ngay theo hướng dẫn bên dưới.';
+                statusBigIcon.innerText = '⚠️';
+                playWarningBeep();
+            } else if (isCaution || warnings.length > 0) {
+                statusBanner.className = 'status-banner status-caution';
+                statusTitle.innerText = '🟡 LƯU Ý: CẦN ĐIỀU CHỈNH TƯ THẾ';
+                statusDesc.innerText = 'Tư thế đang chớm vi phạm góc nghiêng hoặc môi trường ánh sáng chưa tối ưu.';
+                statusBigIcon.innerText = '🔔';
+            } else {
+                statusBanner.className = 'status-banner status-good';
+                statusTitle.innerText = '🟢 TƯ THẾ TỐT - ĐẠT CHUẨN CÔNG THÁI HỌC';
+                statusDesc.innerText = 'Bạn đang duy trì tư thế ngồi làm việc rất tốt. Hãy tiếp tục phát huy!';
+                statusBigIcon.innerText = '✅';
+            }
+
+            // Render Alert Cards
+            if (warnings.length > 0) {
+                alertList.innerHTML = warnings.map(w => `
+                    <div class="alert-item ${w.type}">
+                        <div class="alert-icon">${w.icon}</div>
+                        <div class="alert-content">
+                            <strong>${w.title}</strong>
+                            <span>${w.desc}</span>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                alertList.innerHTML = `
+                    <div class="alert-item safe">
+                        <div class="alert-icon">✨</div>
+                        <div class="alert-content">
+                            <strong>Trạng thái bình thường</strong>
+                            <span>Mọi chỉ số góc đầu, khoảng cách ngồi và ánh sáng đều đạt tiêu chuẩn an toàn.</span>
+                        </div>
+                    </div>
+                `;
             }
         }
 
-        predictInterval = setInterval(fetchPrediction, 400);
-        toggleStream();
+        // Fetch Data from Firebase Realtime Database
+        async function fetchFirebaseData() {
+            try {
+                // Fetch AI Data
+                const resAi = await fetch(`${FIREBASE_BASE}/ai_data.json`, { cache: 'no-store' });
+                let aiData = null;
+                if (resAi.ok) {
+                    aiData = await resAi.json();
+                }
+
+                // Fetch Sensor Data
+                const resSensor = await fetch(`${FIREBASE_BASE}/sensor_data.json`, { cache: 'no-store' });
+                let sensorData = null;
+                if (resSensor.ok) {
+                    sensorData = await resSensor.json();
+                }
+
+                if (aiData || sensorData) {
+                    firebaseStatusText.innerText = 'Firebase RTDB: Đã kết nối';
+                    updateDashboard(aiData, sensorData);
+                }
+            } catch (e) {
+                // Fallback: Query local ESP32 /sensors endpoint
+                fetchLocalSensors();
+            }
+        }
+
+        // Fetch Local ESP32 Sensor Endpoint (/sensors)
+        async function fetchLocalSensors() {
+            try {
+                const res = await fetch('/sensors', { cache: 'no-store' });
+                if (res.ok) {
+                    const data = await res.json();
+                    updateDashboard(null, data);
+                    firebaseStatusText.innerText = 'ESP32 Cục bộ: Đang đọc cảm biến';
+                }
+            } catch (e) {}
+        }
+
+        // Fetch Ergonomics AI Advice
+        async function fetchAdvice() {
+            try {
+                const res = await fetch(`${FIREBASE_BASE}/advice.json`, { cache: 'no-store' });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data) {
+                        const keys = Object.keys(data);
+                        if (keys.length > 0) {
+                            const latestKey = keys[keys.length - 1];
+                            const item = data[latestKey];
+                            let formattedHtml = '';
+                            if (item.summary) {
+                                formattedHtml += `<p style="margin-bottom: 8px;">${item.summary.replace(/\n/g, '<br>')}</p>`;
+                            }
+                            if (item.recommendations && Array.isArray(item.recommendations)) {
+                                formattedHtml += '<ul>' + item.recommendations.map(r => `<li>${r}</li>`).join('') + '</ul>';
+                            }
+                            if (formattedHtml) {
+                                adviceText.innerHTML = formattedHtml;
+                            }
+                        }
+                    }
+                }
+            } catch (e) {}
+        }
+
+        // Initialize Dashboard
+        window.addEventListener('DOMContentLoaded', () => {
+            initStream();
+            fetchFirebaseData();
+            fetchAdvice();
+            animate();
+
+            // Real-time Poll: AI Data every 200ms for smooth live updates
+            setInterval(fetchFirebaseData, 200);
+            
+            // Poll Advice every 6 seconds
+            setInterval(fetchAdvice, 6000);
+        });
     </script>
 </body>
 </html>
@@ -1364,32 +2229,16 @@ static esp_err_t index_handler(httpd_req_t *req)
     return httpd_resp_send(req, INDEX_HTML, strlen(INDEX_HTML));
 }
 
-static esp_err_t predict_handler(httpd_req_t *req)
+static esp_err_t sensors_handler(httpd_req_t *req)
 {
-    int64_t now_time = esp_timer_get_time();
-    // Nếu stream đang tắt (> 1s không có suy luận từ stream_handler), tự bắt 1 frame để suy luận
-    if (now_time - g_last_inference_time > 1000000) {
-        camera_fb_t *fb = esp_camera_fb_get();
-        if (fb) {
-            float confidence = 0.0f;
-            int class_id = run_head_pose_from_camera_fb(fb, &confidence);
-            esp_camera_fb_return(fb);
-            if (class_id >= 0) {
-                g_latest_class_id = class_id;
-                g_latest_confidence = confidence;
-                g_last_inference_time = now_time;
-            }
-        }
-    }
+    int light_adc = read_light_adc();
+    float lux = read_lux();
+    float distance = read_distance();
 
-    char json_response[256];
+    char json_response[128];
     snprintf(json_response, sizeof(json_response),
-        "{\"class_id\":%d,\"class_name\":\"%s\",\"confidence\":%.3f,\"status\":\"%s\"}",
-        g_latest_class_id,
-        get_head_pose_label(g_latest_class_id),
-        g_latest_confidence,
-        (g_latest_class_id == 1) ? "warning" : "ok"
-    );
+             "{\"light_adc\":%d,\"lux\":%.2f,\"distance\":%.2f}",
+             light_adc, lux, distance);
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
@@ -1406,6 +2255,19 @@ void startCameraServer()
         .uri = "/",
         .method = HTTP_GET,
         .handler = index_handler,
+        .user_ctx = NULL
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+        ,
+        .is_websocket = true,
+        .handle_ws_control_frames = false,
+        .supported_subprotocol = NULL
+#endif
+    };
+
+    httpd_uri_t sensors_uri = {
+        .uri = "/sensors",
+        .method = HTTP_GET,
+        .handler = sensors_handler,
         .user_ctx = NULL
 #ifdef CONFIG_HTTPD_WS_SUPPORT
         ,
@@ -1553,19 +2415,13 @@ void startCameraServer()
     // load ids from flash partition
     recognizer.set_ids_from_flash();
 #endif
-    httpd_uri_t predict_uri = {
-        .uri = "/predict",
-        .method = HTTP_GET,
-        .handler = predict_handler,
-        .user_ctx = NULL
-    };
 
     log_i("Starting web server on port: '%d'", config.server_port);
     if (httpd_start(&camera_httpd, &config) == ESP_OK)
     {
         httpd_register_uri_handler(camera_httpd, &index_uri);
+        httpd_register_uri_handler(camera_httpd, &sensors_uri);
         httpd_register_uri_handler(camera_httpd, &stream_uri);
-        httpd_register_uri_handler(camera_httpd, &predict_uri);
         httpd_register_uri_handler(camera_httpd, &cmd_uri);
         httpd_register_uri_handler(camera_httpd, &status_uri);
         httpd_register_uri_handler(camera_httpd, &capture_uri);

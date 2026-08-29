@@ -23,13 +23,4 @@ bool init_firebase();
  */
 void upload_sensor_data_to_firebase(int light_adc, float lux, float distance);
 
-/**
- * Đăng tải kết quả suy luận AI Head Pose Classifier lên Firebase Realtime Database.
- * 
- * @param class_id ID lớp phân loại tư thế đầu (0-3).
- * @param class_name Tên lớp phân loại.
- * @param confidence Độ tin cậy [0.0 - 1.0].
- */
-void upload_head_pose_to_firebase(int class_id, const char* class_name, float confidence);
-
 #endif // FIREBASE_MANAGER_H_

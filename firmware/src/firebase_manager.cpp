@@ -57,13 +57,3 @@ void upload_sensor_data_to_firebase(int light_adc, float lux, float distance) {
         }
     }
 }
-
-void upload_head_pose_to_firebase(int class_id, const char* class_name, float confidence) {
-    if (!Firebase.ready()) {
-        return;
-    }
-
-    Firebase.RTDB.setInt(&fbdo, "/ai_data/head_pose/class_id", class_id);
-    Firebase.RTDB.setString(&fbdo, "/ai_data/head_pose/class_name", class_name);
-    Firebase.RTDB.setFloat(&fbdo, "/ai_data/head_pose/confidence", confidence);
-}
