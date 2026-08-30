@@ -1,13 +1,15 @@
-# Secrets & local config
-serviceAccountKey.json
-.env
-backend/.env
+# Local runtime data
 backend/data/rules.json
 backend/data/history.db
 
-# Python
+# Virtual Environments
+venv/
+*/venv/
+backend/venv/
 backend/.venv/
 backend/.venv-workers/
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
@@ -37,4 +39,3 @@ docs/
 CLAUDE.md
 
 .git.bak/
-
