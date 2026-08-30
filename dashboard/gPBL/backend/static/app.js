@@ -422,6 +422,13 @@ if (toggleWebcamBtn) {
           cameraStatus.textContent = "BROWSER WEBCAM";
           cameraStatus.style.color = "#34d399";
         }
+      } catch (err) {
+        alert("Could not access browser webcam: " + err.message);
+      }
+    }
+  });
+}
+
 /* ---------------- Pro Camera Overlay Actions ---------------- */
 const camMirrorBtn = document.getElementById("camMirrorBtn");
 const camSnapshotBtn = document.getElementById("camSnapshotBtn");
