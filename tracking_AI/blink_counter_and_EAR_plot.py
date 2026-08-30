@@ -760,8 +760,18 @@ class BlinkCounterandEARPlot:
 
 
 if __name__ == "__main__":
-    # ESP32-CAM HTTP Stream URL
+    import sys
     input_video_path = "http://172.20.10.3:81/stream"
+    if len(sys.argv) > 1:
+        arg = sys.argv[1]
+        if arg.isdigit():
+            input_video_path = int(arg)
+        elif arg.lower() in ("0", "webcam", "cam"):
+            input_video_path = 0
+        else:
+            input_video_path = arg
+
+    print(f"🚀 Starting PostureCare AI Tracking with video source: {input_video_path}")
     blink_counter = BlinkCounterandEARPlot(
         video_path=input_video_path,
         threshold=0.294,
