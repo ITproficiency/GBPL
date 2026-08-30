@@ -188,7 +188,7 @@
                 <h2>📷 AI Vision &amp; Camera Feed</h2>
                 <span class="rec-badge" id="recBadge"><span class="rec-dot"></span> REC LIVE</span>
               </div>
-              <div class="camera-status-pill" id="cameraStatus">ESP32 STREAM</div>
+              <div class="camera-status-pill" id="cameraStatus">OFFLINE / STANDBY</div>
             </div>
             <div class="camera-feed-container" id="cameraFeedContainer">
               <img id="cameraStreamImg" src="http://172.20.10.3:81/stream" alt="ESP32-S3 Camera Stream" />
@@ -206,6 +206,14 @@
                 <button id="camSnapshotBtn" class="cam-action-btn" title="Take Snapshot">📸 Snapshot</button>
                 <button id="camFullscreenBtn" class="cam-action-btn" title="Fullscreen">⛶ Fullscreen</button>
               </div>
+            </div>
+            <!-- AI Engine & Camera Source Status Bar -->
+            <div class="ai-status-bar" id="aiStatusBar" style="display: flex; align-items: center; justify-content: space-between; background: rgba(15, 23, 42, 0.7); padding: 8px 14px; border-radius: 8px; margin-top: 10px; border: 1px solid rgba(255,255,255,0.08); font-size: 13px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="status-dot" id="aiStatusDot" style="width: 10px; height: 10px; border-radius: 50%; background: #94a3b8; display: inline-block;"></span>
+                <span id="aiStatusText" style="color: #cbd5e1; font-weight: 500;">AI Tracking Engine: Idle / Stopped</span>
+              </div>
+              <div id="aiSourceBadge" style="background: rgba(255,255,255,0.1); padding: 3px 10px; border-radius: 12px; font-size: 12px; color: #94a3b8; font-weight: 600;">Source: None</div>
             </div>
             <div class="camera-controls">
               <input type="text" id="streamUrlInput" placeholder="http://172.20.10.3:81/stream" value="http://172.20.10.3:81/stream" />

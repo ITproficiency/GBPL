@@ -483,6 +483,27 @@ if (cameraStreamImg) {
   };
 }
 
+const aiStatusDot = document.getElementById("aiStatusDot");
+const aiStatusText = document.getElementById("aiStatusText");
+const aiSourceBadge = document.getElementById("aiSourceBadge");
+
+function updateAIStatusUI(active, sourceLabel) {
+  if (aiStatusDot) {
+    aiStatusDot.style.background = active ? "#34d399" : "#94a3b8";
+    aiStatusDot.style.boxShadow = active ? "0 0 10px #34d399" : "none";
+  }
+  if (aiStatusText) {
+    aiStatusText.textContent = active 
+      ? `🟢 AI Tracking Engine: ACTIVE & RUNNING` 
+      : "⚪ AI Tracking Engine: IDLE / STOPPED";
+    aiStatusText.style.color = active ? "#34d399" : "#cbd5e1";
+  }
+  if (aiSourceBadge) {
+    aiSourceBadge.textContent = active ? `📷 Source: ${sourceLabel}` : "Source: None";
+    aiSourceBadge.style.color = active ? "#60a5fa" : "#94a3b8";
+  }
+}
+
 function resetTrackingState() {
   chartPoints.length = 0;
   if (els.distance) els.distance.textContent = "--";
@@ -501,6 +522,7 @@ function resetTrackingState() {
   if (els.alertList) {
     els.alertList.innerHTML = '<li class="empty">All readings within PostureCare targets</li>';
   }
+  updateAIStatusUI(false, "None");
   if (typeof ocularChart !== "undefined") {
     ocularChart.data.labels = [];
     ocularChart.data.datasets[0].data = [];
@@ -528,6 +550,7 @@ if (connectCamBtn) {
         cameraStatus.textContent = "ESP32 STREAM";
         cameraStatus.style.color = "#60a5fa";
       }
+      updateAIStatusUI(true, "ESP32-CAM (" + url.replace("http://", "") + ")");
       try {
         await fetch("/api/tracking/stop", { method: "POST" });
         await fetch("/api/tracking/start", {
@@ -565,6 +588,7 @@ if (toggleWebcamBtn) {
       }
       // Restart tracking with ESP32 stream
       const url = streamUrlInput ? streamUrlInput.value.trim() : "http://172.20.10.3:81/stream";
+      updateAIStatusUI(true, "ESP32-CAM (" + url.replace("http://", "") + ")");
       try {
         await fetch("/api/tracking/start", {
           method: "POST",
@@ -587,6 +611,7 @@ if (toggleWebcamBtn) {
           cameraStatus.textContent = "BROWSER WEBCAM";
           cameraStatus.style.color = "#34d399";
         }
+        updateAIStatusUI(true, "Browser Webcam (Device 0)");
         // Start Python AI Tracking process for Browser Webcam (source 0)
         await fetch("/api/tracking/start", {
           method: "POST",
@@ -615,6 +640,7 @@ if (stopCamBtn) {
       cameraStatus.style.color = "#f87171";
     }
     if (toggleWebcamBtn) toggleWebcamBtn.textContent = "Use Browser Webcam";
+    updateAIStatusUI(false, "None");
     // Stop Python AI Tracking process
     try { await fetch("/api/tracking/stop", { method: "POST" }); } catch (e) {}
   });
