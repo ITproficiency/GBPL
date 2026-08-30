@@ -9,7 +9,7 @@ An end-to-end intelligent IoT & AI workspace monitoring system designed to prote
 ```mermaid
 flowchart TD
     subgraph Hardware ["ESP32-S3 IoT Node"]
-        CAM["OV2640/OV3660 Camera"]
+        CAM["OV2640 / OV3660 Camera"]
         LDR["LDR Light Sensor (GPIO 1)"]
         US["HC-SR04 Ultrasonic (Trig: 21, Echo: 14)"]
         LEDS["Status LEDs (GPIO 45, 47)"]
@@ -17,15 +17,15 @@ flowchart TD
     end
 
     subgraph Firebase ["Firebase Realtime Database (Cloud)"]
-        RTDB_SENSOR["/sensor_data\n(light_adc, lux, distance)"]
-        RTDB_AI["/ai_data\n(pitch, roll, yaw, ear, blinks, warnings)"]
+        RTDB_SENSOR["/sensor_data<br/>(light_adc, lux, distance)"]
+        RTDB_AI["/ai_data<br/>(pitch, roll, yaw, ear, blinks, warnings)"]
         RTDB_ADVICE["/advice & /insights"]
     end
 
     subgraph AI_Module ["Computer Vision & AI Tracking"]
-        CV_TRACK["blink_counter_and_EAR_plot.py\nMediaPipe FaceMesh (468 landmarks)"]
+        CV_TRACK["blink_counter_and_EAR_plot.py<br/>MediaPipe FaceMesh (468 landmarks)"]
         HEAD_POSE["Head Pose Estimator (solvePnP)"]
-        BLINK_DET["Eye Aspect Ratio (EAR) & Blink Counter"]
+        BLINK_DET["Eye Aspect Ratio & Blink Counter"]
     end
 
     subgraph Dashboard ["PostureCare Web Platform (FastAPI)"]
@@ -37,9 +37,12 @@ flowchart TD
     CAM -->|MJPEG Video Stream| CV_TRACK
     LDR -->|ADC / Lux| RTDB_SENSOR
     US -->|Distance in cm| RTDB_SENSOR
-    CV_TRACK --> HEAD_POSE & BLINK_DET
-    HEAD_POSE & BLINK_DET -->|Live Metrics (6-7 Hz)| RTDB_AI
-    RTDB_SENSOR & RTDB_AI --> SERVER
+    CV_TRACK --> HEAD_POSE
+    CV_TRACK --> BLINK_DET
+    HEAD_POSE -->|Pitch, Roll, Yaw| RTDB_AI
+    BLINK_DET -->|EAR, Blinks, Warnings| RTDB_AI
+    RTDB_SENSOR --> SERVER
+    RTDB_AI --> SERVER
     SERVER --> LLM
     LLM --> RTDB_ADVICE
     SERVER --> WEB_UI
