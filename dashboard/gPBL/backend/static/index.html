@@ -3,24 +3,30 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PostureCare</title>
+  <title>PostureCare AI Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
 </head>
 <body>
   <header>
-    <div>
-      <h1>PostureCare Monitor</h1>
-      <p class="subtitle">AI-assisted posture &amp; workspace coaching</p>
+    <div class="brand-container">
+      <div class="brand-logo-badge">🛡️</div>
+      <div>
+        <h1>PostureCare AI</h1>
+        <p class="subtitle">Smart Posture &amp; Workspace Coaching System</p>
+      </div>
     </div>
     <nav class="tab-nav">
-      <button class="tab-btn active" data-tab="focus">Focus</button>
-      <button class="tab-btn" data-tab="details">Details</button>
+      <button class="tab-btn active" data-tab="focus">⏱️ Focus Hub</button>
+      <button class="tab-btn" data-tab="details">📊 AI Telemetry &amp; Camera</button>
     </nav>
     <div class="header-right">
-      <span class="risk-pill" id="headerRiskPill">--</span>
-      <span class="live-dot"></span>
+      <span class="cloud-status-badge"><span class="cloud-dot"></span> Firebase Realtime</span>
+      <span class="risk-pill" id="headerRiskPill">NORMAL</span>
       <span id="lastUpdate">Loading...</span>
       <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Open settings">⚙</button>
     </div>
@@ -30,30 +36,70 @@
     <section id="focusView" class="tab-view active">
       <div class="focus-grid">
         <div class="panel focus-hero" id="focusHero">
-          <div class="focus-mode-badge" id="focusModeBadge">READY</div>
+          <div class="focus-hero-header">
+            <div class="focus-mode-badge" id="focusModeBadge">READY TO FOCUS</div>
+            <div class="focus-stats-mini">
+              <span id="pomodoroCount">🍅 0 Completed</span>
+            </div>
+          </div>
+
+          <!-- Pomodoro Timer Presets -->
+          <div class="focus-preset-bar" id="focusPresetBar">
+            <button class="preset-btn active" data-mins="25">⚡ 25m Focus</button>
+            <button class="preset-btn" data-mins="50">🧠 50m Deep Work</button>
+            <button class="preset-btn" data-mins="5">☕ 5m Break</button>
+            <button class="preset-btn" data-mins="15">🧘 15m Rest</button>
+          </div>
+
           <div class="focus-ring-wrap">
             <svg class="focus-ring" viewBox="0 0 200 200">
+              <defs>
+                <linearGradient id="ringGradFocus" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#38bdf8" />
+                  <stop offset="100%" stop-color="#818cf8" />
+                </linearGradient>
+              </defs>
               <circle class="focus-ring-bg" cx="100" cy="100" r="90"></circle>
-              <circle class="focus-ring-progress" id="focusRingProgress" cx="100" cy="100" r="90"></circle>
+              <circle class="focus-ring-progress" id="focusRingProgress" cx="100" cy="100" r="90" stroke="url(#ringGradFocus)"></circle>
             </svg>
-            <div class="focus-time" id="focusTime">--:--</div>
+            <div class="focus-time" id="focusTime">25:00</div>
           </div>
+
           <div class="focus-controls">
-            <button id="focusStartBtn" class="focus-btn primary">Start Focus</button>
-            <button id="focusPauseBtn" class="focus-btn" disabled>Pause</button>
-            <button id="focusResetBtn" class="focus-btn" disabled>Reset</button>
+            <button id="focusStartBtn" class="focus-btn primary">▶ Start Focus</button>
+            <button id="focusPauseBtn" class="focus-btn" disabled>⏸ Pause</button>
+            <button id="focusResetBtn" class="focus-btn" disabled>🔄 Reset</button>
           </div>
-          <p class="focus-active-task" id="focusActiveTask">No task selected</p>
-          <p class="focus-session-count" id="focusSessionCount">Sessions completed: 0</p>
+
+          <!-- Ambient Audio Generator Control -->
+          <div class="ambient-sound-card">
+            <div class="ambient-header">
+              <span>🎧 Ambient Sound Generator</span>
+              <div class="ambient-vol-wrap">
+                <span>🔊</span>
+                <input type="range" id="synthVolumeSlider" min="0" max="1" step="0.05" value="0.5" />
+              </div>
+            </div>
+            <div class="sound-chip-grid" id="soundChipGrid">
+              <button class="sound-chip active" data-sound="none">🔇 Off</button>
+              <button class="sound-chip" data-sound="rain">🌧️ Gentle Rain</button>
+              <button class="sound-chip" data-sound="ocean">🌊 Ocean Waves</button>
+              <button class="sound-chip" data-sound="breeze">🌲 Forest Breeze</button>
+              <button class="sound-chip" data-sound="white">🎵 White Noise</button>
+            </div>
+          </div>
+
+          <p class="focus-active-task" id="focusActiveTask">No active task selected</p>
+          <p class="focus-session-count" id="focusSessionCount">Total Sessions Completed: 0</p>
         </div>
 
         <div class="panel task-panel">
           <div class="panel-header">
-            <h2>Tasks</h2>
+            <h2>📋 Session Task List</h2>
           </div>
           <form id="taskForm" class="task-form">
-            <input id="taskInput" type="text" placeholder="What are you working on?" maxlength="120" autocomplete="off" />
-            <button type="submit" class="focus-btn primary">Add</button>
+            <input id="taskInput" type="text" placeholder="What are you working on right now?" maxlength="120" autocomplete="off" />
+            <button type="submit" class="focus-btn primary">+ Add Task</button>
           </form>
           <ul class="task-list" id="taskList">
             <li class="empty">No tasks yet — add one to track pomodoros.</li>
@@ -92,17 +138,27 @@
             </div>
           </div>
 
+          <!-- Pro Live Camera Vision Panel -->
           <div class="panel camera-panel">
             <div class="panel-header">
-              <h2>📷 Live Camera Feed</h2>
+              <div class="camera-title-wrap">
+                <h2>📷 AI Vision &amp; Camera Feed</h2>
+                <span class="rec-badge" id="recBadge"><span class="rec-dot"></span> REC LIVE</span>
+              </div>
               <div class="camera-status-pill" id="cameraStatus">ESP32 STREAM</div>
             </div>
             <div class="camera-feed-container" id="cameraFeedContainer">
               <img id="cameraStreamImg" src="http://172.20.10.3:81/stream" alt="ESP32-S3 Camera Stream" />
               <video id="browserWebcamVideo" autoplay playsinline muted style="display:none;"></video>
               <div id="camFallbackOverlay" class="cam-fallback-overlay" style="display:none;">
-                <p>⚠️ Stream disconnected</p>
+                <p>⚠️ Camera Feed Standby / Disconnected</p>
                 <small>Ensure ESP32-S3 is powered on or switch to Browser Webcam below.</small>
+              </div>
+              <!-- Video Overlay Actions -->
+              <div class="camera-overlay-actions">
+                <button id="camMirrorBtn" class="cam-action-btn" title="Mirror Video">🪞 Mirror</button>
+                <button id="camSnapshotBtn" class="cam-action-btn" title="Take Snapshot">📸 Snapshot</button>
+                <button id="camFullscreenBtn" class="cam-action-btn" title="Fullscreen">⛶ Fullscreen</button>
               </div>
             </div>
             <div class="camera-controls">

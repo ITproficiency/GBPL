@@ -704,6 +704,142 @@ focusEls.alarmVolumeInput.addEventListener("input", () => {
   saveSettings();
 });
 
+/* ---------------- Web Audio Ambient Noise Synthesizer ---------------- */
+let synthNoiseNode = null;
+let synthGainNode = null;
+let synthFilterNode = null;
+
+function stopSynthAmbient() {
+  if (synthGainNode) {
+    try {
+      const ctx = getAudioContext();
+      synthGainNode.gain.linearRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+      setTimeout(() => {
+        if (synthNoiseNode) {
+          synthNoiseNode.stop();
+          synthNoiseNode.disconnect();
+          synthNoiseNode = null;
+        }
+      }, 350);
+    } catch {
+      // Ignore cleanup error
+    }
+  }
+}
+
+function playSynthesizedAmbient(kind, volume = 0.5) {
+  stopSynthAmbient();
+  stopAmbient();
+  if (kind === "none") return;
+
+  try {
+    const ctx = getAudioContext();
+    const bufferSize = 2 * ctx.sampleRate;
+    const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const output = noiseBuffer.getChannelData(0);
+
+    let lastOut = 0.0;
+    for (let i = 0; i < bufferSize; i++) {
+      const white = Math.random() * 2 - 1;
+      if (kind === "ocean" || kind === "rain") {
+        lastOut = (lastOut + 0.02 * white) / 1.02;
+        output[i] = lastOut * 3.5;
+      } else {
+        output[i] = white * 0.15;
+      }
+    }
+
+    synthNoiseNode = ctx.createBufferSource();
+    synthNoiseNode.buffer = noiseBuffer;
+    synthNoiseNode.loop = true;
+
+    synthFilterNode = ctx.createBiquadFilter();
+    if (kind === "rain") {
+      synthFilterNode.type = "lowpass";
+      synthFilterNode.frequency.value = 1200;
+    } else if (kind === "ocean") {
+      synthFilterNode.type = "bandpass";
+      synthFilterNode.frequency.value = 400;
+      synthFilterNode.Q.value = 1.2;
+    } else if (kind === "breeze") {
+      synthFilterNode.type = "lowpass";
+      synthFilterNode.frequency.value = 600;
+    } else {
+      synthFilterNode.type = "lowpass";
+      synthFilterNode.frequency.value = 3200;
+    }
+
+    synthGainNode = ctx.createGain();
+    synthGainNode.gain.setValueAtTime(volume * 0.3, ctx.currentTime);
+
+    synthNoiseNode.connect(synthFilterNode);
+    synthFilterNode.connect(synthGainNode);
+    synthGainNode.connect(ctx.destination);
+
+    synthNoiseNode.start();
+  } catch (err) {
+    console.warn("Web Audio ambient synthesis error:", err);
+  }
+}
+
+/* ---------------- Focus Presets Controller ---------------- */
+const focusPresetBar = document.getElementById("focusPresetBar");
+if (focusPresetBar) {
+  focusPresetBar.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-mins]");
+    if (!btn) return;
+    const mins = Number(btn.dataset.mins);
+    if (!mins) return;
+
+    focusPresetBar.querySelectorAll(".preset-btn").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+
+    if (mins === 5 || mins === 15) {
+      settings.breakMinutes = mins;
+    } else {
+      settings.focusMinutes = mins;
+      if (focusEls.focusMinutesInput) focusEls.focusMinutesInput.value = mins;
+      if (focusEls.focusMinutesValue) focusEls.focusMinutesValue.textContent = mins;
+    }
+    saveSettings();
+
+    if (focusTimer.mode === "idle") {
+      focusTimer.totalSeconds = mins * 60;
+      focusTimer.remainingSeconds = focusTimer.totalSeconds;
+      updateFocusDisplay();
+    }
+  });
+}
+
+/* ---------------- Ambient Sound Chips & Volume Slider ---------------- */
+const soundChipGrid = document.getElementById("soundChipGrid");
+const synthVolumeSlider = document.getElementById("synthVolumeSlider");
+
+if (soundChipGrid) {
+  soundChipGrid.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-sound]");
+    if (!btn) return;
+    const kind = btn.dataset.sound;
+
+    soundChipGrid.querySelectorAll(".sound-chip").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+
+    const vol = synthVolumeSlider ? Number(synthVolumeSlider.value) : 0.5;
+    playSynthesizedAmbient(kind, vol);
+  });
+}
+
+if (synthVolumeSlider) {
+  synthVolumeSlider.addEventListener("input", () => {
+    const vol = Number(synthVolumeSlider.value);
+    if (synthGainNode) {
+      try {
+        synthGainNode.gain.setValueAtTime(vol * 0.3, getAudioContext().currentTime);
+      } catch {}
+    }
+  });
+}
+
 /* ---------------- Init ---------------- */
 
 function initFocusUI() {

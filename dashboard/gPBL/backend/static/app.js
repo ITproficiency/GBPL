@@ -422,9 +422,57 @@ if (toggleWebcamBtn) {
           cameraStatus.textContent = "BROWSER WEBCAM";
           cameraStatus.style.color = "#34d399";
         }
-      } catch (err) {
-        alert("Could not access browser webcam: " + err.message);
+/* ---------------- Pro Camera Overlay Actions ---------------- */
+const camMirrorBtn = document.getElementById("camMirrorBtn");
+const camSnapshotBtn = document.getElementById("camSnapshotBtn");
+const camFullscreenBtn = document.getElementById("camFullscreenBtn");
+const cameraFeedContainer = document.getElementById("cameraFeedContainer");
+let isMirrored = false;
+
+if (camMirrorBtn) {
+  camMirrorBtn.addEventListener("click", () => {
+    isMirrored = !isMirrored;
+    if (cameraStreamImg) cameraStreamImg.classList.toggle("cam-mirrored", isMirrored);
+    if (browserWebcamVideo) browserWebcamVideo.classList.toggle("cam-mirrored", isMirrored);
+    camMirrorBtn.classList.toggle("active", isMirrored);
+  });
+}
+
+if (camFullscreenBtn && cameraFeedContainer) {
+  camFullscreenBtn.addEventListener("click", () => {
+    if (!document.fullscreenElement) {
+      cameraFeedContainer.requestFullscreen().catch((err) => {
+        alert("Could not enter fullscreen: " + err.message);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  });
+}
+
+if (camSnapshotBtn) {
+  camSnapshotBtn.addEventListener("click", () => {
+    const activeEl = isBrowserWebcamActive ? browserWebcamVideo : cameraStreamImg;
+    if (!activeEl) return;
+
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = activeEl.videoWidth || activeEl.naturalWidth || 640;
+      canvas.height = activeEl.videoHeight || activeEl.naturalHeight || 480;
+      const ctx = canvas.getContext("2d");
+
+      if (isMirrored) {
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
       }
+      ctx.drawImage(activeEl, 0, 0, canvas.width, canvas.height);
+
+      const link = document.createElement("a");
+      link.download = `posturecare-snapshot-${Date.now()}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    } catch (err) {
+      alert("Snapshot error: " + err.message);
     }
   });
 }
