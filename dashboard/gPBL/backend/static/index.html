@@ -113,15 +113,19 @@
         <div class="details-main">
           <div class="cards">
             <div class="card">
-              <div class="label">Camera Distance</div>
+              <div class="label">Camera Distance (AI)</div>
               <div class="value"><span id="distance">--</span> <span class="unit">cm</span></div>
+            </div>
+            <div class="card">
+              <div class="label">Ultrasonic Dist (HC-SR04)</div>
+              <div class="value"><span id="ultrasonicDistance">--</span> <span class="unit">cm</span></div>
             </div>
             <div class="card">
               <div class="label">EAR / Threshold</div>
               <div class="value"><span id="earValue">--</span> <span class="unit">/ <span id="earThreshold">0.294</span></span></div>
             </div>
             <div class="card">
-              <div class="label">Blink Counter</div>
+              <div class="label">Blink Rate / Count</div>
               <div class="value"><span id="blinks">--</span> <span class="unit">blinks</span></div>
             </div>
             <div class="card">
@@ -165,18 +169,19 @@
               <input type="text" id="streamUrlInput" placeholder="http://172.20.10.3:81/stream" value="http://172.20.10.3:81/stream" />
               <button id="connectCamBtn" class="focus-btn primary">Connect ESP32 Cam</button>
               <button id="toggleWebcamBtn" class="focus-btn">Use Browser Webcam</button>
+              <button id="stopCamBtn" class="focus-btn danger">⏹ Stop Stream</button>
             </div>
           </div>
 
           <!-- Side-by-Side Telemetry Charts Grid (2-Column Zero-Scroll Layout) -->
           <div class="charts-grid">
             <div class="panel">
-              <h2>Sitting Distance & EAR Telemetry</h2>
-              <div class="chart-wrap"><canvas id="distanceChart"></canvas></div>
+              <h2>👁️ Ocular Telemetry (EAR &amp; Blink Rate)</h2>
+              <div class="chart-wrap"><canvas id="ocularChart"></canvas></div>
             </div>
             <div class="panel">
-              <h2>Ambient Light & Blink Rate Telemetry</h2>
-              <div class="chart-wrap"><canvas id="brightnessChart"></canvas></div>
+              <h2>📏 Distance Telemetry (Camera AI vs Ultrasonic)</h2>
+              <div class="chart-wrap"><canvas id="distanceChart"></canvas></div>
             </div>
           </div>
         </div>

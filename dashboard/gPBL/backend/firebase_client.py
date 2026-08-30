@@ -70,14 +70,32 @@ def _rest_post(path: str, data: Any) -> str:
 
 def read_sensor_raw() -> Any:
     global _use_rest_fallback
+    sensor_data = None
+    ai_data = None
+
     if not _use_rest_fallback:
         try:
             ref = get_ref(config.FIREBASE_SENSOR_PATH)
             if ref:
-                return ref.get()
+                sensor_data = ref.get()
+            ai_ref = get_ref("ai_data")
+            if ai_ref:
+                ai_data = ai_ref.get()
         except Exception:
             _use_rest_fallback = True
-    return _rest_get(config.FIREBASE_SENSOR_PATH)
+
+    if sensor_data is None:
+        sensor_data = _rest_get(config.FIREBASE_SENSOR_PATH) or {}
+    if ai_data is None:
+        ai_data = _rest_get("ai_data") or {}
+
+    raw = {}
+    if isinstance(sensor_data, dict):
+        raw.update(sensor_data)
+    if isinstance(ai_data, dict):
+        raw.update(ai_data)
+
+    return raw if raw else None
 
 
 def get_advice_list(limit: int = 5) -> list[dict]:

@@ -3,6 +3,7 @@ const chartPoints = [];
 
 const els = {
   distance: document.getElementById("distance"),
+  ultrasonicDistance: document.getElementById("ultrasonicDistance"),
   earValue: document.getElementById("earValue"),
   earThreshold: document.getElementById("earThreshold"),
   blinks: document.getElementById("blinks"),
@@ -24,58 +25,18 @@ const els = {
   headerRiskPill: document.getElementById("headerRiskPill"),
 };
 
-const ctxDistance = document.getElementById("distanceChart").getContext("2d");
-const distanceChart = new Chart(ctxDistance, {
+// 1. Ocular & Blink Telemetry Chart (EAR & Blink Count)
+const ctxOcular = document.getElementById("ocularChart").getContext("2d");
+const ocularChart = new Chart(ctxOcular, {
   type: "line",
   data: {
     labels: [],
     datasets: [
-      {
-        label: "Sitting Distance (cm)",
-        data: [],
-        borderColor: "#38bdf8",
-        backgroundColor: "rgba(56, 189, 248, 0.15)",
-        fill: true,
-        tension: 0.35,
-        borderWidth: 2,
-        pointRadius: 3,
-        yAxisID: "y",
-      },
       {
         label: "Eye Aspect Ratio (EAR)",
         data: [],
         borderColor: "#a78bfa",
-        backgroundColor: "transparent",
-        tension: 0.35,
-        borderWidth: 2,
-        pointRadius: 3,
-        yAxisID: "y1",
-      },
-    ],
-  },
-  options: {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { labels: { color: "#8b9cb3" } } },
-    scales: {
-      x: { ticks: { color: "#8b9cb3", maxTicksLimit: 8 }, grid: { color: "#2d3a4f" } },
-      y: { position: "left", ticks: { color: "#8b9cb3" }, grid: { color: "#2d3a4f" }, title: { display: true, text: "cm", color: "#8b9cb3" } },
-      y1: { position: "right", ticks: { color: "#a78bfa" }, grid: { drawOnChartArea: false }, title: { display: true, text: "EAR", color: "#a78bfa" } },
-    },
-  },
-});
-
-const ctxBrightness = document.getElementById("brightnessChart").getContext("2d");
-const brightnessChart = new Chart(ctxBrightness, {
-  type: "line",
-  data: {
-    labels: [],
-    datasets: [
-      {
-        label: "Ambient Light (Lux)",
-        data: [],
-        borderColor: "#f59e0b",
-        backgroundColor: "rgba(245, 158, 11, 0.15)",
+        backgroundColor: "rgba(167, 139, 250, 0.15)",
         fill: true,
         tension: 0.35,
         borderWidth: 2,
@@ -83,7 +44,7 @@ const brightnessChart = new Chart(ctxBrightness, {
         yAxisID: "y",
       },
       {
-        label: "Blink Counter",
+        label: "Blink Rate / Counter",
         data: [],
         borderColor: "#34d399",
         backgroundColor: "transparent",
@@ -100,8 +61,50 @@ const brightnessChart = new Chart(ctxBrightness, {
     plugins: { legend: { labels: { color: "#8b9cb3" } } },
     scales: {
       x: { ticks: { color: "#8b9cb3", maxTicksLimit: 8 }, grid: { color: "#2d3a4f" } },
-      y: { position: "left", ticks: { color: "#8b9cb3" }, grid: { color: "#2d3a4f" }, title: { display: true, text: "Lux", color: "#8b9cb3" } },
+      y: { position: "left", ticks: { color: "#a78bfa" }, grid: { color: "#2d3a4f" }, title: { display: true, text: "EAR", color: "#a78bfa" } },
       y1: { position: "right", ticks: { color: "#34d399" }, grid: { drawOnChartArea: false }, title: { display: true, text: "blinks", color: "#34d399" } },
+    },
+  },
+});
+
+// 2. Distance Telemetry Chart (AI Camera vs Ultrasonic Sensor)
+const ctxDistance = document.getElementById("distanceChart").getContext("2d");
+const distanceChart = new Chart(ctxDistance, {
+  type: "line",
+  data: {
+    labels: [],
+    datasets: [
+      {
+        label: "Camera Distance AI (cm)",
+        data: [],
+        borderColor: "#38bdf8",
+        backgroundColor: "rgba(56, 189, 248, 0.15)",
+        fill: true,
+        tension: 0.35,
+        borderWidth: 2,
+        pointRadius: 3,
+        yAxisID: "y",
+      },
+      {
+        label: "Ultrasonic Sensor (cm)",
+        data: [],
+        borderColor: "#f59e0b",
+        backgroundColor: "transparent",
+        tension: 0.35,
+        borderWidth: 2,
+        pointRadius: 3,
+        yAxisID: "y1",
+      },
+    ],
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { labels: { color: "#8b9cb3" } } },
+    scales: {
+      x: { ticks: { color: "#8b9cb3", maxTicksLimit: 8 }, grid: { color: "#2d3a4f" } },
+      y: { position: "left", ticks: { color: "#38bdf8" }, grid: { color: "#2d3a4f" }, title: { display: true, text: "AI (cm)", color: "#38bdf8" } },
+      y1: { position: "right", ticks: { color: "#f59e0b" }, grid: { drawOnChartArea: false }, title: { display: true, text: "Sensor (cm)", color: "#f59e0b" } },
     },
   },
 });
@@ -161,6 +164,7 @@ function renderInsight(item) {
 /** Display only — all risk logic comes from backend processing.py */
 function renderSensor(data) {
   if (els.distance) els.distance.textContent = data.distance_cm != null ? Math.round(data.distance_cm) : "--";
+  if (els.ultrasonicDistance) els.ultrasonicDistance.textContent = data.ultrasonic_distance_cm != null ? Math.round(data.ultrasonic_distance_cm) : "--";
   if (els.earValue) els.earValue.textContent = data.ear != null ? Number(data.ear).toFixed(3) : "--";
   if (els.earThreshold) els.earThreshold.textContent = data.ear_threshold != null ? Number(data.ear_threshold).toFixed(3) : "0.294";
   if (els.blinks) els.blinks.textContent = data.blinks != null ? data.blinks : (data.blink_rate_bpm != null ? Math.round(data.blink_rate_bpm) : "--");
@@ -206,17 +210,17 @@ function renderSensor(data) {
   if (chartPoints.length > 30) chartPoints.shift();
   const timeLabels = chartPoints.map((r) => formatTime(r.timestamp));
 
-  // Update Distance & EAR Chart
+  // 1. Update Ocular & Blink Chart (EAR & Blinks)
+  ocularChart.data.labels = timeLabels;
+  ocularChart.data.datasets[0].data = chartPoints.map((r) => r.ear);
+  ocularChart.data.datasets[1].data = chartPoints.map((r) => r.blinks ?? r.blink_rate_bpm);
+  ocularChart.update("none");
+
+  // 2. Update Distance Chart (Camera AI & Ultrasonic Sensor)
   distanceChart.data.labels = timeLabels;
   distanceChart.data.datasets[0].data = chartPoints.map((r) => r.distance_cm);
-  distanceChart.data.datasets[1].data = chartPoints.map((r) => r.ear);
+  distanceChart.data.datasets[1].data = chartPoints.map((r) => r.ultrasonic_distance_cm ?? r.distance_cm);
   distanceChart.update("none");
-
-  // Update Brightness & Blinks Chart
-  brightnessChart.data.labels = timeLabels;
-  brightnessChart.data.datasets[0].data = chartPoints.map((r) => r.brightness_lux);
-  brightnessChart.data.datasets[1].data = chartPoints.map((r) => r.blinks);
-  brightnessChart.update("none");
 }
 
 async function fetchRules() {
@@ -426,6 +430,23 @@ if (toggleWebcamBtn) {
         alert("Could not access browser webcam: " + err.message);
       }
     }
+  });
+}
+
+const stopCamBtn = document.getElementById("stopCamBtn");
+if (stopCamBtn) {
+  stopCamBtn.addEventListener("click", () => {
+    stopBrowserWebcam();
+    if (cameraStreamImg) {
+      cameraStreamImg.src = "";
+      cameraStreamImg.style.display = "none";
+    }
+    if (camFallbackOverlay) camFallbackOverlay.style.display = "flex";
+    if (cameraStatus) {
+      cameraStatus.textContent = "OFFLINE";
+      cameraStatus.style.color = "#f87171";
+    }
+    if (toggleWebcamBtn) toggleWebcamBtn.textContent = "Use Browser Webcam";
   });
 }
 

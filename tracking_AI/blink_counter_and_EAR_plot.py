@@ -29,9 +29,14 @@ class FirebaseSyncWorker:
             "pitch": round(float(pitch), 2) if pitch is not None else 0.0,
             "roll": round(float(roll), 2) if roll is not None else 0.0,
             "yaw": round(float(yaw), 2) if yaw is not None else 0.0,
-            "distance_cm": round(float(dist_cm), 1) if dist_cm is not None else 0.0,
+            "camera_distance_cm": round(float(dist_cm), 1) if dist_cm is not None else 0.0,
+            "ai_distance_cm": round(float(dist_cm), 1) if dist_cm is not None else 0.0,
             "ear": round(float(ear), 3) if ear is not None else 0.0,
             "blinks": int(blinks),
+            "blink_rate": int(blinks),
+            "head_pitch": round(float(pitch), 2) if pitch is not None else 0.0,
+            "head_roll": round(float(roll), 2) if roll is not None else 0.0,
+            "head_yaw": round(float(yaw), 2) if yaw is not None else 0.0,
             "warnings": warnings if warnings else [],
             "posture_status": posture_status,
             "nose_x": round(float(nose_x), 3) if nose_x is not None else 0.5,
@@ -43,6 +48,7 @@ class FirebaseSyncWorker:
 
     def _worker_loop(self):
         last_sent = None
+        sensor_url = self.url.replace("ai_data.json", "sensor_data.json")
         while self.running:
             data_to_send = None
             with self.lock:
@@ -52,13 +58,23 @@ class FirebaseSyncWorker:
             if data_to_send is not None and data_to_send != last_sent:
                 try:
                     payload = json.dumps(data_to_send, ensure_ascii=False).encode('utf-8')
-                    req = urllib.request.Request(
+                    # Update /ai_data.json
+                    req1 = urllib.request.Request(
                         self.url,
                         data=payload,
                         method='PATCH',
                         headers={'Content-Type': 'application/json; charset=utf-8'}
                     )
-                    with urllib.request.urlopen(req, timeout=1.0) as res:
+                    with urllib.request.urlopen(req1, timeout=1.0) as res:
+                        pass
+                    # Update /sensor_data.json so poller & dashboard pick up AI metrics
+                    req2 = urllib.request.Request(
+                        sensor_url,
+                        data=payload,
+                        method='PATCH',
+                        headers={'Content-Type': 'application/json; charset=utf-8'}
+                    )
+                    with urllib.request.urlopen(req2, timeout=1.0) as res:
                         pass
                     last_sent = data_to_send
                 except Exception:
@@ -612,7 +628,15 @@ class BlinkCounterandEARPlot:
                         temp_cap.release()
                 
                 if cap is None or not cap.isOpened():
-                    raise IOError(f"Failed to connect to ESP32-CAM stream at {self.video_path}")
+                    print(f"\n⚠️  [CAMERA FALLBACK] Cannot connect to ESP32-CAM stream at {self.video_path}.")
+                    print("👉 Automatically switching to local computer Webcam (device index 0)...\n")
+                    self.video_path = 0
+                    cap = ThreadedVideoStream(0)
+                    if not cap.isOpened():
+                        raise IOError("Failed to open both ESP32-CAM stream and local computer Webcam (0)")
+                    cap.set(cv.CAP_PROP_FRAME_WIDTH, 640)
+                    cap.set(cv.CAP_PROP_FRAME_HEIGHT, 480)
+                    cap.start()
             elif isinstance(self.video_path, int):
                 # Webcam: use ThreadedVideoStream to avoid latency
                 cap = ThreadedVideoStream(self.video_path)

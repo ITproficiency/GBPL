@@ -147,11 +147,12 @@ def process_reading(raw: Any, default_device_id: str = "esp32_001") -> dict | No
     blinks = extract_float(raw, fields.get("blinks", ["blinks"]))
     raw_warnings = raw.get("warnings") if isinstance(raw.get("warnings"), list) else []
 
-    if distance is None and not has_brightness and ear is None:
-        return None
-
-    distance_cm = distance if distance is not None else 0.0
-    sitting_minutes = track_sitting_minutes(distance, rules)
+    cam_dist = extract_float(raw, fields.get("camera_distance", ["camera_distance_cm", "camera_distance", "ai_distance_cm"]))
+    ultra_dist = extract_float(raw, fields.get("ultrasonic_distance", ["ultrasonic_distance_cm", "ultrasonic_distance", "distance_cm", "distance"]))
+    
+    active_distance = cam_dist if cam_dist is not None else ultra_dist
+    distance_cm = active_distance if active_distance is not None else 0.0
+    sitting_minutes = track_sitting_minutes(active_distance, rules)
     blink_rate_bpm = extract_float(raw, fields.get("blink_rate", ["blink_rate"]))
     head_pitch = extract_float(raw, fields.get("head_pitch", ["head_pitch"]))
     head_roll = extract_float(raw, fields.get("head_roll", ["head_roll"]))
@@ -175,7 +176,8 @@ def process_reading(raw: Any, default_device_id: str = "esp32_001") -> dict | No
 
     return {
         "device_id": raw.get("device_id") or default_device_id,
-        "distance_cm": distance_cm,
+        "distance_cm": round(cam_dist, 1) if cam_dist is not None else None,
+        "ultrasonic_distance_cm": round(ultra_dist, 1) if ultra_dist is not None else None,
         "light_adc": light_adc,
         "brightness_lux": brightness_lux,
         "sitting_minutes": sitting_minutes,
