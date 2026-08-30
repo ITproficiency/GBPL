@@ -112,9 +112,16 @@
             </div>
           </div>
 
-          <div class="panel">
-            <h2>Live Chart (session)</h2>
-            <div class="chart-wrap"><canvas id="sensorChart"></canvas></div>
+          <!-- Side-by-Side Telemetry Charts Grid (2-Column Zero-Scroll Layout) -->
+          <div class="charts-grid">
+            <div class="panel">
+              <h2>Sitting Distance & EAR Telemetry</h2>
+              <div class="chart-wrap"><canvas id="distanceChart"></canvas></div>
+            </div>
+            <div class="panel">
+              <h2>Ambient Light & Blink Rate Telemetry</h2>
+              <div class="chart-wrap"><canvas id="brightnessChart"></canvas></div>
+            </div>
           </div>
         </div>
 

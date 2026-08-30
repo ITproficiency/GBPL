@@ -1020,3 +1020,16 @@ footer {
   color: white;
   font-size: 0.85rem;
 }
+
+/* ---------------- Telemetry Charts Grid (2-Column Layout) ---------------- */
+.charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+@media (max-width: 900px) {
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+}

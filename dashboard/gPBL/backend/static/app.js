@@ -24,14 +24,33 @@ const els = {
   headerRiskPill: document.getElementById("headerRiskPill"),
 };
 
-const ctx = document.getElementById("sensorChart").getContext("2d");
-const chart = new Chart(ctx, {
+const ctxDistance = document.getElementById("distanceChart").getContext("2d");
+const distanceChart = new Chart(ctxDistance, {
   type: "line",
   data: {
     labels: [],
     datasets: [
-      { label: "Distance (cm)", data: [], borderColor: "#3b82f6", tension: 0.3, yAxisID: "y" },
-      { label: "Brightness (lux)", data: [], borderColor: "#f59e0b", tension: 0.3, yAxisID: "y1" },
+      {
+        label: "Sitting Distance (cm)",
+        data: [],
+        borderColor: "#38bdf8",
+        backgroundColor: "rgba(56, 189, 248, 0.15)",
+        fill: true,
+        tension: 0.35,
+        borderWidth: 2,
+        pointRadius: 3,
+        yAxisID: "y",
+      },
+      {
+        label: "Eye Aspect Ratio (EAR)",
+        data: [],
+        borderColor: "#a78bfa",
+        backgroundColor: "transparent",
+        tension: 0.35,
+        borderWidth: 2,
+        pointRadius: 3,
+        yAxisID: "y1",
+      },
     ],
   },
   options: {
@@ -40,8 +59,49 @@ const chart = new Chart(ctx, {
     plugins: { legend: { labels: { color: "#8b9cb3" } } },
     scales: {
       x: { ticks: { color: "#8b9cb3", maxTicksLimit: 8 }, grid: { color: "#2d3a4f" } },
-      y: { position: "left", ticks: { color: "#8b9cb3" }, grid: { color: "#2d3a4f" } },
-      y1: { position: "right", ticks: { color: "#8b9cb3" }, grid: { drawOnChartArea: false } },
+      y: { position: "left", ticks: { color: "#8b9cb3" }, grid: { color: "#2d3a4f" }, title: { display: true, text: "cm", color: "#8b9cb3" } },
+      y1: { position: "right", ticks: { color: "#a78bfa" }, grid: { drawOnChartArea: false }, title: { display: true, text: "EAR", color: "#a78bfa" } },
+    },
+  },
+});
+
+const ctxBrightness = document.getElementById("brightnessChart").getContext("2d");
+const brightnessChart = new Chart(ctxBrightness, {
+  type: "line",
+  data: {
+    labels: [],
+    datasets: [
+      {
+        label: "Ambient Light (Lux)",
+        data: [],
+        borderColor: "#f59e0b",
+        backgroundColor: "rgba(245, 158, 11, 0.15)",
+        fill: true,
+        tension: 0.35,
+        borderWidth: 2,
+        pointRadius: 3,
+        yAxisID: "y",
+      },
+      {
+        label: "Blink Counter",
+        data: [],
+        borderColor: "#34d399",
+        backgroundColor: "transparent",
+        tension: 0.35,
+        borderWidth: 2,
+        pointRadius: 3,
+        yAxisID: "y1",
+      },
+    ],
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { labels: { color: "#8b9cb3" } } },
+    scales: {
+      x: { ticks: { color: "#8b9cb3", maxTicksLimit: 8 }, grid: { color: "#2d3a4f" } },
+      y: { position: "left", ticks: { color: "#8b9cb3" }, grid: { color: "#2d3a4f" }, title: { display: true, text: "Lux", color: "#8b9cb3" } },
+      y1: { position: "right", ticks: { color: "#34d399" }, grid: { drawOnChartArea: false }, title: { display: true, text: "blinks", color: "#34d399" } },
     },
   },
 });
@@ -144,10 +204,19 @@ function renderSensor(data) {
 
   chartPoints.push(data);
   if (chartPoints.length > 30) chartPoints.shift();
-  chart.data.labels = chartPoints.map((r) => formatTime(r.timestamp));
-  chart.data.datasets[0].data = chartPoints.map((r) => r.distance_cm);
-  chart.data.datasets[1].data = chartPoints.map((r) => r.brightness_lux);
-  chart.update("none");
+  const timeLabels = chartPoints.map((r) => formatTime(r.timestamp));
+
+  // Update Distance & EAR Chart
+  distanceChart.data.labels = timeLabels;
+  distanceChart.data.datasets[0].data = chartPoints.map((r) => r.distance_cm);
+  distanceChart.data.datasets[1].data = chartPoints.map((r) => r.ear);
+  distanceChart.update("none");
+
+  // Update Brightness & Blinks Chart
+  brightnessChart.data.labels = timeLabels;
+  brightnessChart.data.datasets[0].data = chartPoints.map((r) => r.brightness_lux);
+  brightnessChart.data.datasets[1].data = chartPoints.map((r) => r.blinks);
+  brightnessChart.update("none");
 }
 
 async function fetchRules() {
