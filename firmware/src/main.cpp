@@ -20,7 +20,7 @@ void setupLedFlash(int pin);
 
 void setup() {
   Serial.begin(115200);
-  while (!Serial && millis() < 3000); // Đợi kết nối Serial CDC (USB)
+  while (!Serial && millis() < 3000); // Wait for Serial CDC (USB) connection
   delay(1000);
   Serial.setDebugOutput(true);
   Serial.println();
@@ -29,7 +29,7 @@ void setup() {
   Serial.println("   ESP32-S3 Camera + Sensors + Firebase");
   Serial.println("==================================================");
 
-  // Khởi tạo cảm biến (LDR & Ultrasonic)
+  // Initialize sensors (LDR & Ultrasonic)
   init_sensors();
 
   camera_config_t config;
@@ -100,7 +100,7 @@ void setup() {
   setupLedFlash(LED_GPIO_NUM);
 #endif
 
-  // Kết nối WiFi
+  // Connect to WiFi
   WiFi.begin(ssid, password);
   WiFi.setSleep(false);
 
@@ -111,7 +111,7 @@ void setup() {
   Serial.println("");
   Serial.println("[WiFi] Connected successfully!");
 
-  // Khởi tạo Firebase Realtime Database
+  // Initialize Firebase Realtime Database
   init_firebase();
 
   startCameraServer();
@@ -122,7 +122,7 @@ void setup() {
 }
 
 void loop() {
-  // Đọc dữ liệu cảm biến LDR và Siêu âm
+  // Read sensor data (LDR and Ultrasonic)
   int lightADC = read_light_adc();
   float lux = read_lux();
   float distance = read_distance();
@@ -135,9 +135,9 @@ void loop() {
     Serial.printf("Distance  : %.2f cm\n", distance);
   }
 
-  // Đăng tải dữ liệu cảm biến lên Firebase Realtime Database
+  // Upload sensor data to Firebase Realtime Database
   upload_sensor_data_to_firebase(lightADC, lux, distance);
 
-  // Đợi 2 giây giữa các lần đọc cảm biến
+  // Wait 2 seconds between sensor readings
   delay(2000);
 }

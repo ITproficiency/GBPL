@@ -198,6 +198,57 @@ class BlinkCounter:
         for loc in eye_landmarks:
             cv.circle(frame, (landmarks[loc]), 3, color, cv.FILLED)
 
+    def draw_head_axes(self, frame, landmarks, pitch=None, yaw=None, roll=None, length=50):
+        """Draw X/Y/Z head axes with the actual nose tip (landmark 1) as the origin,
+        dynamically rotating according to Pitch, Yaw, Roll angles."""
+        if pitch is None or yaw is None or roll is None:
+            return
+
+        origin = (int(landmarks[1][0]), int(landmarks[1][1]))
+
+        p = np.radians(pitch)
+        y = np.radians(yaw)
+        r = np.radians(roll)
+
+        Rx = np.array([
+            [1, 0, 0],
+            [0, np.cos(p), -np.sin(p)],
+            [0, np.sin(p), np.cos(p)]
+        ], dtype=np.float64)
+
+        Ry = np.array([
+            [np.cos(y), 0, np.sin(y)],
+            [0, 1, 0],
+            [-np.sin(y), 0, np.cos(y)]
+        ], dtype=np.float64)
+
+        Rz = np.array([
+            [np.cos(r), -np.sin(r), 0],
+            [np.sin(r), np.cos(r), 0],
+            [0, 0, 1]
+        ], dtype=np.float64)
+
+        R = Rz @ Rx @ Ry
+
+        axis_x = R @ np.array([length, 0, 0], dtype=np.float64)
+        axis_y = R @ np.array([0, length, 0], dtype=np.float64)
+        axis_z = R @ np.array([0, 0, -length], dtype=np.float64)
+
+        endpoint_x = (int(origin[0] + axis_x[0]), int(origin[1] + axis_x[1]))
+        endpoint_y = (int(origin[0] + axis_y[0]), int(origin[1] + axis_y[1]))
+        endpoint_z = (int(origin[0] + axis_z[0]), int(origin[1] + axis_z[1]))
+
+        cv.line(frame, origin, endpoint_x, (0, 0, 255), 3, cv.LINE_AA)     # X: Red
+        cv.putText(frame, "X", endpoint_x, cv.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 1, cv.LINE_AA)
+
+        cv.line(frame, origin, endpoint_y, (0, 255, 0), 3, cv.LINE_AA)     # Y: Green
+        cv.putText(frame, "Y", endpoint_y, cv.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 1, cv.LINE_AA)
+
+        cv.line(frame, origin, endpoint_z, (255, 0, 0), 3, cv.LINE_AA)     # Z: Blue
+        cv.putText(frame, "Z", endpoint_z, cv.FONT_HERSHEY_SIMPLEX, 0.45, (255, 0, 0), 1, cv.LINE_AA)
+
+        cv.circle(frame, origin, 4, (255, 255, 255), cv.FILLED)
+
     def process_video(self):
         """
         Main method to process the video/webcam, detect blinks, head pose, and distance.
@@ -289,18 +340,18 @@ class BlinkCounter:
                     active_warnings = []
                     is_danger = False
                     if pitch is not None and pitch > 15:
-                        active_warnings.append(f"Cúi đầu quá sâu (+{pitch:.1f}° > 15°)")
+                        active_warnings.append(f"Head tilted down too much (+{pitch:.1f}° > 15°)")
                         is_danger = True
                     elif pitch is not None and pitch < -15:
-                        active_warnings.append(f"Ngửa đầu quá cao ({pitch:.1f}° < -15°)")
+                        active_warnings.append(f"Head tilted back too much ({pitch:.1f}° < -15°)")
                         is_danger = True
 
                     if roll is not None and abs(roll) > 15:
-                        active_warnings.append(f"Nghiêng đầu lệch trục ({roll:.1f}°)")
+                        active_warnings.append(f"Head tilted off axis ({roll:.1f}°)")
                         is_danger = True
 
                     if dist_cm is not None and dist_cm < 40:
-                        active_warnings.append(f"Ngồi quá gần màn hình ({dist_cm:.1f} cm < 40 cm)")
+                        active_warnings.append(f"Sitting too close to screen ({dist_cm:.1f} cm < 40 cm)")
                         is_danger = True
 
                     posture_status = "DANGER" if is_danger else ("WARNING" if (abs(pitch or 0) > 10 or abs(roll or 0) > 10) else "GOOD")
@@ -326,9 +377,10 @@ class BlinkCounter:
                     # Determine visualization color based on EAR
                     color = self.set_colors(ear)
 
-                    # Draw eye landmarks
+                    # Draw eye landmarks & head axes at nose tip
                     self.draw_eye_landmarks(frame, face_landmarks, self.RIGHT_EYE, color)
                     self.draw_eye_landmarks(frame, face_landmarks, self.LEFT_EYE, color)
+                    self.draw_head_axes(frame, face_landmarks, pitch, yaw, roll)
 
                     # Display Only Blinks Counter
                     DrawingUtils.draw_text_with_bg(frame, f"Blinks: {self.blink_counter}", (10, 40),

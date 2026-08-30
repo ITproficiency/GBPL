@@ -250,55 +250,66 @@ class BlinkCounterandEARPlot:
             return pitch, yaw, roll
         return None, None, None
 
-    def draw_head_axes(self, frame, landmarks):
-        """Draw X/Y/Z head axes with the nose tip as the origin."""
-        frame_h, frame_w = frame.shape[:2]
-        image_points_2d = np.array([
-            landmarks[idx] for idx in self.head_pose_landmarks
-        ], dtype=np.float64)
-
-        focal_length = frame_w
-        center = (frame_w / 2, frame_h / 2)
-        camera_matrix = np.array([
-            [focal_length, 0, center[0]],
-            [0, focal_length, center[1]],
-            [0, 0, 1]
-        ], dtype=np.float64)
-        dist_coeffs = np.zeros((4, 1))
-
-        success, rvec, tvec = cv.solvePnP(
-            self.model_points_3d,
-            image_points_2d,
-            camera_matrix,
-            dist_coeffs,
-            flags=cv.SOLVEPNP_ITERATIVE
-        )
-        if not success:
+    def draw_head_axes(self, frame, landmarks, pitch=None, yaw=None, roll=None, length=50):
+        """Draw X/Y/Z head axes with the actual nose tip (landmark 1) as the origin,
+        dynamically rotating according to the calibrated Pitch, Yaw, Roll angles."""
+        if pitch is None or yaw is None or roll is None:
             return
 
-        axis_length = 100.0
-        axis_points_3d = np.array([
-            (0.0, 0.0, 0.0),
-            (0.0, 0.0, axis_length),
-            (axis_length, 0.0, 0.0),
-            (0.0, axis_length, 0.0)
+        # Origin is always attached to the nose tip (Landmark index 1)
+        origin = (int(landmarks[1][0]), int(landmarks[1][1]))
+
+        # Convert calibrated angles from degrees to radians
+        p = np.radians(pitch)
+        y = np.radians(yaw)
+        r = np.radians(roll)
+
+        # Rotation matrix: Pitch (around X-axis), Yaw (around Y-axis), Roll (around Z-axis)
+        Rx = np.array([
+            [1, 0, 0],
+            [0, np.cos(p), -np.sin(p)],
+            [0, np.sin(p), np.cos(p)]
         ], dtype=np.float64)
-        axis_points_2d, _ = cv.projectPoints(
-            axis_points_3d, rvec, tvec, camera_matrix, dist_coeffs
-        )
-        axis_points_2d = axis_points_2d.reshape(-1, 2).astype(int)
-        origin = tuple(axis_points_2d[0])
 
-        for endpoint, color, label in zip(
-            axis_points_2d[1:],
-            ((0, 0, 255), (0, 255, 0), (255, 0, 0)),
-            ("X", "Y", "Z")
-        ):
-            endpoint = tuple(endpoint)
-            cv.line(frame, origin, endpoint, color, 3, cv.LINE_AA)
-            cv.putText(frame, label, endpoint, cv.FONT_HERSHEY_SIMPLEX,
-                       0.7, color, 2, cv.LINE_AA)
+        Ry = np.array([
+            [np.cos(y), 0, np.sin(y)],
+            [0, 1, 0],
+            [-np.sin(y), 0, np.cos(y)]
+        ], dtype=np.float64)
 
+        Rz = np.array([
+            [np.cos(r), -np.sin(r), 0],
+            [np.sin(r), np.cos(r), 0],
+            [0, 0, 1]
+        ], dtype=np.float64)
+
+        # Combined rotation matrix (Roll * Pitch * Yaw)
+        R = Rz @ Rx @ Ry
+
+        # 3 standard axis vectors in space (pixels):
+        # X-axis (Red): Points to the right
+        # Y-axis (Green): Points down along the face axis
+        # Z-axis (Blue): Points straight out from the nose (-Z points toward camera)
+        axis_x = R @ np.array([length, 0, 0], dtype=np.float64)
+        axis_y = R @ np.array([0, length, 0], dtype=np.float64)
+        axis_z = R @ np.array([0, 0, -length], dtype=np.float64)
+
+        # Project 2D onto frame from nose origin
+        endpoint_x = (int(origin[0] + axis_x[0]), int(origin[1] + axis_x[1]))
+        endpoint_y = (int(origin[0] + axis_y[0]), int(origin[1] + axis_y[1]))
+        endpoint_z = (int(origin[0] + axis_z[0]), int(origin[1] + axis_z[1]))
+
+        # Draw axes X (Red), Y (Green), Z (Blue)
+        cv.line(frame, origin, endpoint_x, (0, 0, 255), 3, cv.LINE_AA)     # X: Red
+        cv.putText(frame, "X", endpoint_x, cv.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 1, cv.LINE_AA)
+
+        cv.line(frame, origin, endpoint_y, (0, 255, 0), 3, cv.LINE_AA)     # Y: Green
+        cv.putText(frame, "Y", endpoint_y, cv.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 1, cv.LINE_AA)
+
+        cv.line(frame, origin, endpoint_z, (255, 0, 0), 3, cv.LINE_AA)     # Z: Blue
+        cv.putText(frame, "Z", endpoint_z, cv.FONT_HERSHEY_SIMPLEX, 0.45, (255, 0, 0), 1, cv.LINE_AA)
+
+        # Draw circle point at the center of the nose tip
         cv.circle(frame, origin, 4, (255, 255, 255), cv.FILLED)
 
     def _init_video_saving(self, save_video, output_filename):
@@ -493,7 +504,7 @@ class BlinkCounterandEARPlot:
             for loc in eye:
                 cv.circle(frame, (landmarks[loc]), 2, color, cv.FILLED)
 
-        self.draw_head_axes(frame, landmarks)
+        self.draw_head_axes(frame, landmarks, pitch, yaw, roll)
         
         DrawingUtils.draw_text_with_bg(
             frame, f"Blinks: {self.blink_counter}", (10, 30),
@@ -521,31 +532,31 @@ class BlinkCounterandEARPlot:
         is_danger = False
 
         warning_y = 140
-        if pitch is not None and pitch > 15:
-            cv.putText(frame, "CANH BAO: CUI DAU QUA SAU!", (10, warning_y),
+        if pitch is not None and pitch > 5:
+            cv.putText(frame, "WARNING: HEAD TOO LOW!", (10, warning_y),
                        cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2, cv.LINE_AA)
             warning_y += 25
-            active_warnings.append(f"Cúi đầu quá sâu (+{pitch:.1f}° > 15°)")
+            active_warnings.append(f"Head tilted down too much ({pitch:.1f}°)")
             is_danger = True
 
-        if pitch is not None and pitch < -15:
-            cv.putText(frame, "CANH BAO: NGANG DAU QUA SAU!", (10, warning_y),
+        if pitch is not None and pitch < -5:
+            cv.putText(frame, "WARNING: HEAD TOO HIGH!", (10, warning_y),
                        cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2, cv.LINE_AA)
             warning_y += 25
-            active_warnings.append(f"Ngửa đầu quá cao ({pitch:.1f}° < -15°)")
+            active_warnings.append(f"Head tilted back too much ({pitch:.1f}°)")
             is_danger = True
 
-        if roll is not None and abs(roll) > 15:
-            cv.putText(frame, "CANH BAO: NGHIENG DAU QUA SAU!", (10, warning_y),
+        if roll is not None and abs(roll) > 10:
+            cv.putText(frame, "WARNING: HEAD TILTED!", (10, warning_y),
                        cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2, cv.LINE_AA)
             warning_y += 25
-            active_warnings.append(f"Nghiêng đầu lệch trục ({roll:.1f}°)")
+            active_warnings.append(f"Head tilted off axis ({roll:.1f}°)")
             is_danger = True
 
         if dist_cm is not None and dist_cm < 40:
-            cv.putText(frame, "CANH BAO: NGOI QUA GAN!", (10, warning_y),
+            cv.putText(frame, "WARNING: TOO CLOSE!", (10, warning_y),
                        cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2, cv.LINE_AA)
-            active_warnings.append(f"Ngồi quá gần màn hình ({dist_cm:.1f} cm < 40 cm)")
+            active_warnings.append(f"Sitting too close to screen ({dist_cm:.1f} cm < 40 cm)")
             is_danger = True
 
         posture_status = "DANGER" if is_danger else ("WARNING" if (abs(pitch or 0) > 10 or abs(roll or 0) > 10) else "GOOD")
@@ -576,13 +587,16 @@ class BlinkCounterandEARPlot:
         try:
             # Open video capture (supports 0 for webcam, file paths, or ESP32-CAM HTTP URLs)
             if isinstance(self.video_path, str) and self.video_path.startswith("http"):
-                urls_to_try = [self.video_path]
                 clean_url = self.video_path.rstrip("/")
-                urls_to_try.extend([
-                    f"{clean_url}:81/stream",
-                    f"{clean_url}/stream",
-                    f"{clean_url}/mjpeg"
-                ])
+                if ":81/stream" in clean_url or "/stream" in clean_url or "/mjpeg" in clean_url:
+                    urls_to_try = [self.video_path]
+                else:
+                    urls_to_try = [
+                        f"{clean_url}:81/stream",
+                        f"{clean_url}/stream",
+                        f"{clean_url}/mjpeg",
+                        self.video_path
+                    ]
                 
                 cap = None
                 for url in urls_to_try:
@@ -723,7 +737,7 @@ class BlinkCounterandEARPlot:
 
 if __name__ == "__main__":
     # ESP32-CAM HTTP Stream URL
-    input_video_path = "http://172.20.10.3/"
+    input_video_path = "http://172.20.10.3:81/stream"
     blink_counter = BlinkCounterandEARPlot(
         video_path=input_video_path,
         threshold=0.294,

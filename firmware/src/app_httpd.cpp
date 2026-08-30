@@ -283,7 +283,7 @@ static int run_face_recognition(fb_data_t *fb, std::list<dl::detect::result_t> *
 #if CONFIG_LED_ILLUMINATOR_ENABLED
 void enable_led(bool en)
 { // Turn LED On or Off
-    if (led_duty == 0) return; // Bỏ qua nếu không dùng LED flash
+    if (led_duty == 0) return; // Skip if LED flash is disabled
     int duty = en ? led_duty : 0;
     if (en && isStreaming && (led_duty > CONFIG_LED_MAX_INTENSITY))
     {
@@ -1334,7 +1334,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
             <div class="logo-icon">👁️</div>
             <div class="header-title">
                 <h1>GPBL Ergonomics & Posture AI</h1>
-                <p>Giám Sát Tư Thế & Cảnh Báo Góc Pitch - Roll Thời Gian Thực</p>
+                <p>Giám Sát Tư Thế & Trục Tọa Độ Gắn Chóp Mũi Thời Gian Thực</p>
             </div>
         </div>
         <div class="header-badges">
@@ -1359,7 +1359,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
             <!-- Video Stream Card -->
             <div class="card">
                 <div class="card-header">
-                    <div class="card-title">📹 Video Stream & Trục Tọa Độ 3D (Nose Axis)</div>
+                    <div class="card-title">📹 Video Stream & Trục Tọa Độ 3D Gắn Chóp Mũi (Nose Tip)</div>
                     <span class="badge badge-green" id="stream-status-badge"><span class="badge-dot"></span> <span id="stream-state-text">STREAM LIVE</span></span>
                 </div>
                 <div class="video-box" id="video-container">
@@ -1466,9 +1466,9 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
                         </div>
                     </div>
                     <div style="flex: 1; padding-left: 16px;">
-                        <strong style="font-size: 0.92rem; color: var(--text-main); display: block; margin-bottom: 4px;">Mô Phỏng Tư Thế Đầu 3D (Tâm tại Mũi)</strong>
+                        <strong style="font-size: 0.92rem; color: var(--text-main); display: block; margin-bottom: 4px;">Mô Phỏng Tư Thế Đầu 3D (Gốc tại Chóp Mũi)</strong>
                         <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">
-                            Trục 3D trên camera và mô hình 3D xoay quanh tâm mũi theo góc <strong>Pitch</strong> (X-Đỏ), <strong>Roll</strong> (Y-Xanh lục) và <strong>Yaw</strong> (Z-Xanh lam).
+                            Trục 3D trên camera và mô hình gắn chặt vào chóp mũi người dùng (Landmark 1) theo góc <strong>Pitch</strong> (X-Đỏ: Ngang), <strong>Yaw</strong> (Y-Xanh lục: Dọc) và <strong>Hướng Nhìn/Roll</strong> (Z-Xanh lam: Mũi chỉ ra ngoài).
                         </p>
                     </div>
                 </div>
@@ -1787,116 +1787,188 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
             } catch (e) {}
         }
 
-        // Draw 3D Axes Centered at Nose on Canvas
-        function draw3DAxesCanvas() {
-            if (!axisCanvas) return;
-            const ctx = axisCanvas.getContext('2d');
-            
-            // Adjust canvas resolution to element dimensions
+        // Calculate exact image bounding box within video container (handling aspect ratios & letterboxing)
+        function getImageRenderBox() {
             const rect = axisCanvas.getBoundingClientRect();
             if (axisCanvas.width !== rect.width || axisCanvas.height !== rect.height) {
                 axisCanvas.width = rect.width;
                 axisCanvas.height = rect.height;
             }
 
+            const cW = axisCanvas.width;
+            const cH = axisCanvas.height;
+            if (cW <= 0 || cH <= 0) return { x: 0, y: 0, w: cW, h: cH };
+
+            // Natural image aspect ratio (default 4:3)
+            const imgW = streamView.naturalWidth || 640;
+            const imgH = streamView.naturalHeight || 480;
+            const imgRatio = imgW / imgH;
+            const canvasRatio = cW / cH;
+
+            let renderW, renderH, offsetX, offsetY;
+            if (canvasRatio > imgRatio) {
+                renderH = cH;
+                renderW = cH * imgRatio;
+                offsetX = (cW - renderW) / 2;
+                offsetY = 0;
+            } else {
+                renderW = cW;
+                renderH = cW / imgRatio;
+                offsetX = 0;
+                offsetY = (cH - renderH) / 2;
+            }
+            return { x: offsetX, y: offsetY, w: renderW, h: renderH };
+        }
+
+        // Draw 3D Axes Centered at Nose on Canvas
+        function draw3DAxesCanvas() {
+            if (!axisCanvas) return;
+            const ctx = axisCanvas.getContext('2d');
+            const imgBox = getImageRenderBox();
+
             ctx.clearRect(0, 0, axisCanvas.width, axisCanvas.height);
 
             if (!show3DAxes || axisCanvas.width <= 0 || axisCanvas.height <= 0) return;
 
             // Interpolate angles & nose position for 60fps smoothness
-            renderPitch += (currentPitch - renderPitch) * 0.2;
-            renderRoll  += (currentRoll  - renderRoll)  * 0.2;
-            renderYaw   += (currentYaw   - renderYaw)   * 0.2;
-            noseNormX   += (targetNoseX  - noseNormX)   * 0.15;
-            noseNormY   += (targetNoseY  - noseNormY)   * 0.15;
+            renderPitch += (currentPitch - renderPitch) * 0.22;
+            renderRoll  += (currentRoll  - renderRoll)  * 0.22;
+            renderYaw   += (currentYaw   - renderYaw)   * 0.22;
+            noseNormX   += (targetNoseX  - noseNormX)   * 0.18;
+            noseNormY   += (targetNoseY  - noseNormY)   * 0.18;
 
-            // Center of coordinate system (Nose position)
-            const originX = axisCanvas.width * noseNormX;
-            const originY = axisCanvas.height * noseNormY;
-            const axisLength = Math.min(rect.width, rect.height) * 0.22; // Responsive length
+            // Center of coordinate system attached directly to the user's nose tip
+            const originX = imgBox.x + imgBox.w * noseNormX;
+            const originY = imgBox.y + imgBox.h * noseNormY;
+            const axisLength = Math.min(imgBox.w, imgBox.h) * 0.24; // Responsive length
 
             // Convert angles to radians
             const p = (renderPitch * Math.PI) / 180.0;
             const r = (renderRoll * Math.PI) / 180.0;
             const y = (renderYaw * Math.PI) / 180.0;
 
-            // 3D Rotation Matrix combining Yaw (Y), Pitch (X), Roll (Z)
             const cp = Math.cos(p), sp = Math.sin(p);
             const cr = Math.cos(r), sr = Math.sin(r);
             const cy = Math.cos(y), sy = Math.sin(y);
 
-            // Function to rotate a 3D vector [vx, vy, vz]
-            function rotatePoint(vx, vy, vz) {
-                // Rx (Pitch)
-                const y1 = vy * cp - vz * sp;
-                const z1 = vy * sp + vz * cp;
-                // Ry (Yaw)
-                const x2 = vx * cy + z1 * sy;
-                const z2 = -vx * sy + z1 * cy;
-                // Rz (Roll)
-                const x3 = x2 * cr - y1 * sr;
-                const y3 = x2 * sr + y1 * cr;
-                return { x: originX + x3, y: originY - y3 }; // Screen 2D projection
+            // 3D rotation matrix matching solvePnP / MediaPipe:
+            // R = Rz(Roll) * Rx(Pitch) * Ry(Yaw)
+            function transformPoint3D(vx, vy, vz) {
+                // 1. Ry (Yaw)
+                const x1 = vx * cy + vz * sy;
+                const y1 = vy;
+                const z1 = -vx * sy + vz * cy;
+
+                // 2. Rx (Pitch)
+                const x2 = x1;
+                const y2 = y1 * cp - z1 * sp;
+                const z2 = y1 * sp + z1 * cp;
+
+                // 3. Rz (Roll)
+                const x3 = x2 * cr - y2 * sr;
+                const y3 = x2 * sr + y2 * cr;
+                const z3 = z2;
+
+                return {
+                    x: originX + x3,
+                    y: originY + y3,
+                    z: z3
+                };
             }
 
-            // Define 3D axis endpoints from origin
-            // X-Axis (Forward/Pitch Axis - Red): pointing forward and slightly down
-            const pX = rotatePoint(0, 0, axisLength);
-            // Y-Axis (Right/Roll Axis - Green): pointing right
-            const pY = rotatePoint(axisLength, 0, 0);
-            // Z-Axis (Up/Yaw Axis - Blue): pointing up
-            const pZ = rotatePoint(0, axisLength, 0);
+            // Define 3D axis endpoints from nose tip:
+            // X-Axis (Red): Pointing right along face horizontal axis
+            const pX = transformPoint3D(axisLength, 0, 0);
+            // Y-Axis (Green): Pointing down along face vertical axis (bridge of nose -> chin)
+            const pY = transformPoint3D(0, axisLength, 0);
+            // Z-Axis (Blue): Pointing outward from nose tip towards camera (gaze direction)
+            const pZ = transformPoint3D(0, 0, -axisLength);
 
-            // Draw Axis Line with Arrow & Label
-            function drawAxis(target, color, label, angleVal) {
+            // Draw Axis Line with Arrow, Glow & Label
+            function drawAxis(target, color, label, angleVal, isZ = false) {
+                const dx = target.x - originX;
+                const dy = target.y - originY;
+                const dist = Math.hypot(dx, dy);
+
+                // Draw main axis line
                 ctx.beginPath();
                 ctx.moveTo(originX, originY);
                 ctx.lineTo(target.x, target.y);
                 ctx.strokeStyle = color;
-                ctx.lineWidth = 3.5;
+                ctx.lineWidth = isZ ? 4.0 : 3.2;
                 ctx.lineCap = 'round';
+                ctx.shadowColor = color;
+                ctx.shadowBlur = 8;
                 ctx.stroke();
-
-                // Arrow Head
-                const angle = Math.atan2(target.y - originY, target.x - originX);
-                const headLen = 10;
-                ctx.beginPath();
-                ctx.moveTo(target.x, target.y);
-                ctx.lineTo(target.x - headLen * Math.cos(angle - Math.PI / 6), target.y - headLen * Math.sin(angle - Math.PI / 6));
-                ctx.lineTo(target.x - headLen * Math.cos(angle + Math.PI / 6), target.y - headLen * Math.sin(angle + Math.PI / 6));
-                ctx.closePath();
-                ctx.fillStyle = color;
-                ctx.fill();
-
-                // Text Badge
-                ctx.font = 'bold 12px "Segoe UI", sans-serif';
-                ctx.fillStyle = color;
-                ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-                ctx.shadowBlur = 6;
-                ctx.fillText(`${label}: ${(angleVal >= 0 ? '+' : '') + angleVal.toFixed(1)}°`, target.x + 8, target.y + 4);
                 ctx.shadowBlur = 0;
+
+                // If axis has noticeable projection length, draw directional arrowhead
+                if (dist > 8) {
+                    const angle = Math.atan2(dy, dx);
+                    const headLen = isZ ? 14 : 11;
+                    ctx.beginPath();
+                    ctx.moveTo(target.x, target.y);
+                    ctx.lineTo(target.x - headLen * Math.cos(angle - Math.PI / 6), target.y - headLen * Math.sin(angle - Math.PI / 6));
+                    ctx.lineTo(target.x - headLen * Math.cos(angle + Math.PI / 6), target.y - headLen * Math.sin(angle + Math.PI / 6));
+                    ctx.closePath();
+                    ctx.fillStyle = color;
+                    ctx.fill();
+
+                    // Text Badge
+                    ctx.font = 'bold 12px "Segoe UI", sans-serif';
+                    ctx.fillStyle = color;
+                    ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+                    ctx.shadowBlur = 6;
+                    ctx.fillText(`${label}: ${(angleVal >= 0 ? '+' : '') + angleVal.toFixed(1)}°`, target.x + 8, target.y + 4);
+                    ctx.shadowBlur = 0;
+                } else if (isZ) {
+                    // When looking straight forward, draw a target crosshair badge for Z-axis
+                    ctx.beginPath();
+                    ctx.arc(originX, originY, 16, 0, 2 * Math.PI);
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 1.8;
+                    ctx.setLineDash([3, 3]);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    ctx.font = 'bold 11px "Segoe UI", sans-serif';
+                    ctx.fillStyle = color;
+                    ctx.shadowColor = 'rgba(0,0,0,0.9)';
+                    ctx.shadowBlur = 6;
+                    ctx.fillText(`Z (Hướng Mũi): ${(angleVal >= 0 ? '+' : '') + angleVal.toFixed(1)}°`, originX + 22, originY - 14);
+                    ctx.shadowBlur = 0;
+                }
             }
 
-            // Draw Axes
+            // Draw 3 Axes
             drawAxis(pX, '#f43f5e', 'X (Pitch)', renderPitch);
-            drawAxis(pY, '#10b981', 'Y (Roll)', renderRoll);
-            drawAxis(pZ, '#38bdf8', 'Z (Yaw)', renderYaw);
+            drawAxis(pY, '#10b981', 'Y (Yaw)', renderYaw);
+            drawAxis(pZ, '#38bdf8', 'Z (Mũi/Roll)', renderRoll, true);
 
-            // Draw Origin (Nose Center)
+            // Draw Origin (Nose Tip - Landmark #1)
+            // Outer pulse glow ring
             ctx.beginPath();
-            ctx.arc(originX, originY, 6, 0, 2 * Math.PI);
+            ctx.arc(originX, originY, 10, 0, 2 * Math.PI);
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.9)';
+            ctx.lineWidth = 2.5;
+            ctx.shadowColor = '#38bdf8';
+            ctx.shadowBlur = 10;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // Inner solid center dot
+            ctx.beginPath();
+            ctx.arc(originX, originY, 5, 0, 2 * Math.PI);
             ctx.fillStyle = '#ffffff';
             ctx.fill();
-            ctx.beginPath();
-            ctx.arc(originX, originY, 11, 0, 2 * Math.PI);
-            ctx.strokeStyle = 'rgba(56, 189, 248, 0.8)';
-            ctx.lineWidth = 2.5;
-            ctx.stroke();
 
-            // Label at Origin
+            // Label at Nose Origin
             ctx.font = '600 11px "Segoe UI", sans-serif';
             ctx.fillStyle = '#f8fafc';
-            ctx.fillText('👃 Mũi (Tâm 0,0,0)', originX - 45, originY + 22);
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+            ctx.shadowBlur = 6;
+            ctx.fillText('👃 Chóp Mũi (0,0,0)', originX - 45, originY + 24);
+            ctx.shadowBlur = 0;
         }
 
         // Animation Render Loop
@@ -1916,8 +1988,8 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
             if (aiData && aiData.yaw !== undefined) rawYaw = parseFloat(aiData.yaw);
 
             // Nose 2D Coordinates if passed from AI tracking
-            if (aiData && aiData.nose_x !== undefined) targetNoseX = Math.max(0.15, Math.min(0.85, parseFloat(aiData.nose_x)));
-            if (aiData && aiData.nose_y !== undefined) targetNoseY = Math.max(0.15, Math.min(0.85, parseFloat(aiData.nose_y)));
+            if (aiData && aiData.nose_x !== undefined) targetNoseX = Math.max(0.1, Math.min(0.9, parseFloat(aiData.nose_x)));
+            if (aiData && aiData.nose_y !== undefined) targetNoseY = Math.max(0.1, Math.min(0.9, parseFloat(aiData.nose_y)));
 
             // Apply Calibration Offsets
             currentPitch = rawPitch - calibPitch;
@@ -2138,7 +2210,39 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
             }
         }
 
-        // Fetch Data from Firebase Realtime Database
+        // Setup Real-time Firebase Stream via Server-Sent Events (SSE)
+        let sseSource = null;
+        function initFirebaseSSE() {
+            try {
+                if (sseSource) sseSource.close();
+                sseSource = new EventSource(`${FIREBASE_BASE}/ai_data.json`);
+                sseSource.addEventListener('put', (e) => {
+                    if (!e.data) return;
+                    try {
+                        const parsed = JSON.parse(e.data);
+                        if (parsed && parsed.data) {
+                            firebaseStatusText.innerText = 'Firebase RTDB: Trực tiếp (Live SSE)';
+                            updateDashboard(parsed.data, null);
+                        }
+                    } catch (err) {}
+                });
+                sseSource.addEventListener('patch', (e) => {
+                    if (!e.data) return;
+                    try {
+                        const parsed = JSON.parse(e.data);
+                        if (parsed && parsed.data) {
+                            firebaseStatusText.innerText = 'Firebase RTDB: Trực tiếp (Live SSE)';
+                            updateDashboard(parsed.data, null);
+                        }
+                    } catch (err) {}
+                });
+                sseSource.onerror = () => {
+                    firebaseStatusText.innerText = 'Firebase RTDB: Đang đồng bộ...';
+                };
+            } catch (err) {}
+        }
+
+        // Fetch Data from Firebase Realtime Database (Fallback / Initial)
         async function fetchFirebaseData() {
             try {
                 // Fetch AI Data
@@ -2156,7 +2260,9 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 }
 
                 if (aiData || sensorData) {
-                    firebaseStatusText.innerText = 'Firebase RTDB: Đã kết nối';
+                    if (!sseSource || sseSource.readyState !== EventSource.OPEN) {
+                        firebaseStatusText.innerText = 'Firebase RTDB: Đã kết nối';
+                    }
                     updateDashboard(aiData, sensorData);
                 }
             } catch (e) {
@@ -2207,11 +2313,12 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(
         // Initialize Dashboard
         window.addEventListener('DOMContentLoaded', () => {
             initStream();
+            initFirebaseSSE();
             fetchFirebaseData();
             fetchAdvice();
             animate();
 
-            // Real-time Poll: AI Data every 200ms for smooth live updates
+            // Real-time Poll fallback: AI Data every 200ms
             setInterval(fetchFirebaseData, 200);
             
             // Poll Advice every 6 seconds

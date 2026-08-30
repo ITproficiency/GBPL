@@ -16,23 +16,23 @@
 #define LUX_B 2.0f
 
 /**
- * Khởi tạo cấu hình chân GPIO và độ phân giải ADC cho cảm biến.
+ * Initialize GPIO pin configuration and ADC resolution for sensors.
  */
 void init_sensors();
 
 /**
- * Đọc giá trị ADC trực tiếp từ cảm biến ánh sáng LDR (0 - 4095).
+ * Read raw ADC value directly from LDR light sensor (0 - 4095).
  */
 int read_light_adc();
 
 /**
- * Đọc và tính toán cường độ ánh sáng theo đơn vị Lux.
+ * Read and calculate light intensity in Lux.
  */
 float read_lux();
 
 /**
- * Đọc khoảng cách từ cảm biến siêu âm Ultrasonic (cm).
- * Trả về -1.0f nếu không nhận được tín hiệu Echo.
+ * Read distance from Ultrasonic sensor (cm).
+ * Returns -1.0f if no echo signal is received.
  */
 float read_distance();
 

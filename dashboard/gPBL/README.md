@@ -1,47 +1,48 @@
-# gPBL — PostureCare Demo (local)
+# PostureCare Dashboard (gPBL)
+
+Real-time ergonomic health & posture monitoring web dashboard with intelligent LLM insights powered by FastAPI, Firebase Realtime Database, and OpenRouter.
 
 ```
-git clone → điền key → .\run.ps1
+git clone → configure secrets → .\run.ps1
 ```
 
-## Quick start
+## 🚀 Quick Start
 
-```powershell
-git clone https://github.com/Apeiron2/gPBL.git
-cd gPBL
-```
+### 1. Secrets Configuration (One-time Setup)
 
-**Secrets (1 lần, không commit Git):**
+| File | Instructions |
+|------|--------------|
+| `backend/serviceAccountKey.json` | Download private key from **Firebase Console → Project Settings → Service accounts → Generate new private key** and save to `backend/serviceAccountKey.json` (Template: `backend/serviceAccountKey.json.example`) |
+| `backend/.env` | Copy `backend/.env.example` to `backend/.env` and set `OPENROUTER_API_KEY` |
 
-| File | Cách lấy |
-|------|----------|
-| `backend/serviceAccountKey.json` | Firebase Console → Service accounts → Generate key |
-| `backend/.env` | `copy backend\.env.example backend\.env` → điền `OPENROUTER_API_KEY` |
+### 2. Run Locally
 
-Template: `backend/serviceAccountKey.json.example`
-
-**Chạy:**
-
+#### Windows (PowerShell):
 ```powershell
 .\run.ps1
 ```
+*Alternatively, run `run.bat`.*
 
-macOS/Linux: `chmod +x run.sh && ./run.sh`
+#### macOS / Linux:
+```bash
+chmod +x run.sh && ./run.sh
+```
 
-- Dashboard: http://localhost:8080/dashboard
+- **Dashboard UI**: http://localhost:8080/dashboard
+- **Interactive API Docs**: http://localhost:8080/docs
 
-`run.ps1` tự tạo `.venv`, cài dependencies, tạo `.env` + `data/rules.json` nếu thiếu.
+> `run.ps1` / `run.sh` automatically creates `.venv`, installs dependencies, copies `.env` and `data/rules.json` from templates if missing, and launches the Uvicorn server.
 
-## Rules
+## ⚙️ Rules & Configuration
 
-**Một file duy nhất:** `backend/data/rules.json` (template: `data/rules.json.example`). Sửa file → restart server.
+- **Rules File**: `backend/data/rules.json` (template: `data/rules.json.example`). Edit thresholds (posture angles, distance, light lux, blink rates) and restart server or save changes.
+- **Light ADC to Lux Conversion**: ESP32 transmits 12-bit ADC `light_adc`; the backend converts it to `lux` before evaluating threshold rules.
 
-ESP32 gửi **`light_adc`** (ADC 12-bit); backend tự quy đổi sang **lux** trước khi đánh giá. Chi tiết công thức: [`docs/light-adc-to-lux.md`](docs/light-adc-to-lux.md).
+## 🤖 LLM Advice & Fallback
 
-## Không có OpenRouter key?
+If `OPENROUTER_API_KEY` is not provided or left as default, the backend operates seamlessly with built-in heuristic mock advice responses when clicking **Get AI Advice**.
 
-App vẫn chạy — LLM dùng mock cho nút **Get AI Advice**.
+## 📋 Requirements
 
-## Yêu cầu
-
-Python 3.11+, internet (Firebase).
+- Python 3.11+
+- Internet access (for Firebase RTDB & OpenRouter API)

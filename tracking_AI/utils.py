@@ -1,6 +1,68 @@
+import threading
+import time
 import cv2 as cv
 import numpy as np
 from typing import Tuple, Union, Optional
+
+class ThreadedVideoStream:
+    """
+    A threaded wrapper around cv2.VideoCapture to continuously read frames
+    in a dedicated background thread, preventing frame buffer lag for live streams.
+    """
+    def __init__(self, src=0):
+        self.stream = cv.VideoCapture(src)
+        self.grabbed, self.frame = self.stream.read()
+        self.stopped = False
+        self.lock = threading.Lock()
+        self.thread = None
+
+    def start(self):
+        if self.thread is None:
+            self.thread = threading.Thread(target=self._update, daemon=True)
+            self.thread.start()
+        return self
+
+    def _update(self):
+        fail_count = 0
+        while not self.stopped:
+            if not self.stream.isOpened():
+                break
+            grabbed, frame = self.stream.read()
+            if not grabbed:
+                fail_count += 1
+                if fail_count > 40:
+                    with self.lock:
+                        self.grabbed = False
+                    break
+                time.sleep(0.02)
+                continue
+            fail_count = 0
+            with self.lock:
+                self.grabbed = grabbed
+                self.frame = frame
+
+    def read(self):
+        with self.lock:
+            frame = self.frame.copy() if self.frame is not None else None
+            grabbed = self.grabbed
+        return grabbed, frame
+
+    def isOpened(self):
+        return self.stream.isOpened() and not self.stopped
+
+    def set(self, propId, value):
+        return self.stream.set(propId, value)
+
+    def get(self, propId):
+        return self.stream.get(propId)
+
+    def release(self):
+        self.stopped = True
+        if self.thread is not None and self.thread.is_alive():
+            self.thread.join(timeout=1.0)
+        self.stream.release()
+
+
 
 class DrawingUtils:
     """Utility class for OpenCV drawing operations with enhanced error handling."""

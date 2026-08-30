@@ -2,15 +2,15 @@
 #include <math.h>
 
 void init_sensors() {
-    // Cấu hình độ phân giải ADC 12-bit (0 - 4095)
+    // Configure 12-bit ADC resolution (0 - 4095)
     analogReadResolution(12);
 
-    // Cấu hình chân cho Cảm biến Siêu âm (Ultrasonic)
+    // Configure GPIO pins for Ultrasonic sensor
     pinMode(TRIG_PIN, OUTPUT);
     pinMode(ECHO_PIN, INPUT);
     digitalWrite(TRIG_PIN, LOW);
 
-    // Cấu hình chân LED cảnh báo
+    // Configure alert LED pins
     pinMode(LED_RED, OUTPUT);
     pinMode(GREEN_LED, OUTPUT);
     digitalWrite(LED_RED, LOW);
@@ -44,5 +44,5 @@ float read_distance() {
         return -1.0f; // Timeout / No Echo
     }
 
-    return duration * 0.0343f / 2.0f; // Đơn vị: cm
+    return duration * 0.0343f / 2.0f; // Unit: cm
 }
