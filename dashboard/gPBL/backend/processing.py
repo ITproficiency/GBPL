@@ -143,7 +143,11 @@ def process_reading(raw: Any, default_device_id: str = "esp32_001") -> dict | No
     brightness_lux, light_adc = resolve_brightness_lux(raw, rules)
 
     has_brightness = light_adc is not None or extract_float(raw, fields["brightness"]) is not None
-    if distance is None and not has_brightness:
+    ear = extract_float(raw, fields.get("ear", ["ear"]))
+    blinks = extract_float(raw, fields.get("blinks", ["blinks"]))
+    raw_warnings = raw.get("warnings") if isinstance(raw.get("warnings"), list) else []
+
+    if distance is None and not has_brightness and ear is None:
         return None
 
     distance_cm = distance if distance is not None else 0.0
@@ -156,6 +160,19 @@ def process_reading(raw: Any, default_device_id: str = "esp32_001") -> dict | No
     risk = evaluate_risk(distance_cm, brightness_lux, sitting_minutes)
     extended_events = detectors.run_extended_events(blink_rate_bpm, head_pitch, head_roll, head_yaw, rules)
 
+    # Merge AI tracking warnings & escalate risk level if active warnings exist
+    all_warnings = [w for w in raw_warnings if isinstance(w, str) and w.strip()]
+    for msg in risk["warning_messages"]:
+        if msg and "PostureCare targets" not in msg and msg not in all_warnings:
+            all_warnings.append(msg)
+
+    risk_level = risk["risk_level"]
+    if len(all_warnings) > 0 and risk_level == "normal":
+        risk_level = "high" if len(all_warnings) >= 2 else "warning"
+
+    if len(all_warnings) == 0:
+        all_warnings = ["All readings within PostureCare targets"]
+
     return {
         "device_id": raw.get("device_id") or default_device_id,
         "distance_cm": distance_cm,
@@ -163,14 +180,17 @@ def process_reading(raw: Any, default_device_id: str = "esp32_001") -> dict | No
         "brightness_lux": brightness_lux,
         "sitting_minutes": sitting_minutes,
         "blink_rate_bpm": blink_rate_bpm,
+        "ear": round(ear, 3) if ear is not None else None,
+        "blinks": int(blinks) if blinks is not None else None,
+        "ear_threshold": 0.294,
         "head_pitch_deg": head_pitch,
         "head_roll_deg": head_roll,
         "head_yaw_deg": head_yaw,
-        "risk_score": risk["risk_score"],
-        "risk_level": risk["risk_level"],
-        "warning_messages": risk["warning_messages"],
+        "risk_score": risk["risk_score"] + len(raw_warnings),
+        "risk_level": risk_level,
+        "warning_messages": all_warnings,
         "events": extended_events,
-        "llm_eligible": should_call_llm(risk["risk_level"]),
+        "llm_eligible": should_call_llm(risk_level),
         "timestamp": raw.get("timestamp") or datetime.now(timezone.utc).isoformat(),
     }
 

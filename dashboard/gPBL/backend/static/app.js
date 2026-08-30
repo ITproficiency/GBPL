@@ -3,6 +3,9 @@ const chartPoints = [];
 
 const els = {
   distance: document.getElementById("distance"),
+  earValue: document.getElementById("earValue"),
+  earThreshold: document.getElementById("earThreshold"),
+  blinks: document.getElementById("blinks"),
   brightness: document.getElementById("brightness"),
   sittingMinutes: document.getElementById("sittingMinutes"),
   blinkRate: document.getElementById("blinkRate"),
@@ -97,24 +100,36 @@ function renderInsight(item) {
 
 /** Display only — all risk logic comes from backend processing.py */
 function renderSensor(data) {
-  els.distance.textContent = Math.round(data.distance_cm);
-  els.brightness.textContent = Math.round(data.brightness_lux);
-  els.sittingMinutes.textContent = data.sitting_minutes ?? "--";
-  els.blinkRate.textContent = data.blink_rate_bpm != null ? data.blink_rate_bpm.toFixed(1) : "--";
-  els.headPose.textContent = formatHeadPose(data.head_pitch_deg, data.head_roll_deg, data.head_yaw_deg);
-  els.riskLevel.textContent = data.risk_level.toUpperCase();
-  els.riskLevel.className = "value risk-" + data.risk_level;
-  els.lastUpdate.textContent = "Updated " + formatTime(data.timestamp);
-  els.headerRiskPill.textContent = data.risk_level.toUpperCase();
-  els.headerRiskPill.className = "risk-pill risk-" + data.risk_level;
+  if (els.distance) els.distance.textContent = data.distance_cm != null ? Math.round(data.distance_cm) : "--";
+  if (els.earValue) els.earValue.textContent = data.ear != null ? Number(data.ear).toFixed(3) : "--";
+  if (els.earThreshold) els.earThreshold.textContent = data.ear_threshold != null ? Number(data.ear_threshold).toFixed(3) : "0.294";
+  if (els.blinks) els.blinks.textContent = data.blinks != null ? data.blinks : (data.blink_rate_bpm != null ? Math.round(data.blink_rate_bpm) : "--");
+  if (els.brightness) els.brightness.textContent = data.brightness_lux != null ? Math.round(data.brightness_lux) : "--";
+  if (els.sittingMinutes) els.sittingMinutes.textContent = data.sitting_minutes ?? "--";
+  if (els.blinkRate) els.blinkRate.textContent = data.blink_rate_bpm != null ? data.blink_rate_bpm.toFixed(1) : "--";
+  if (els.headPose) els.headPose.textContent = formatHeadPose(data.head_pitch_deg, data.head_roll_deg, data.head_yaw_deg);
+  
+  if (els.riskLevel) {
+    els.riskLevel.textContent = data.risk_level.toUpperCase();
+    els.riskLevel.className = "value risk-" + data.risk_level;
+  }
+  if (els.lastUpdate) els.lastUpdate.textContent = "Updated " + formatTime(data.timestamp);
+  if (els.headerRiskPill) {
+    els.headerRiskPill.textContent = data.risk_level.toUpperCase();
+    els.headerRiskPill.className = "risk-pill risk-" + data.risk_level;
+  }
 
-  els.alertList.innerHTML = data.risk_level === "normal"
-    ? '<li class="empty">All readings within PostureCare targets</li>'
-    : `<li class="alert-item ${data.risk_level}">
+  const msgs = (data.warning_messages || []).filter(m => m && !m.includes("PostureCare targets"));
+  if (msgs.length === 0) {
+    els.alertList.innerHTML = '<li class="empty">All readings within PostureCare targets</li>';
+  } else {
+    els.alertList.innerHTML = msgs.map(m => `
+      <li class="alert-item ${data.risk_level}">
         <strong>${data.risk_level.toUpperCase()}</strong>
-        <div class="msg">${(data.warning_messages || []).join("; ")}</div>
-        ${data.sitting_minutes ? `<div class="msg">Sitting: ${data.sitting_minutes} min</div>` : ""}
-      </li>`;
+        <div class="msg">${m}</div>
+      </li>
+    `).join("");
+  }
 
   // Use backend flag — same rule as POST /api/analyze
   const eligible =
