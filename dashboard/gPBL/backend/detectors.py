@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Per-signal detectors — pure threshold checks that turn raw values into
 discrete, named events instead of one composite score.
 
@@ -12,8 +13,6 @@ per-reading would reintroduce the if-else-on-one-record problem the window/
 summary builder (next step) exists to avoid. Their events are exposed on the
 reading for that future aggregation step to count/trend instead.
 """
-
-from __future__ import annotations
 
 Event = dict
 

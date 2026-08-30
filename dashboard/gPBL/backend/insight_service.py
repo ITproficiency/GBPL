@@ -1,14 +1,4 @@
-"""Window insight — aggregate recent readings into a summary, then ask the LLM
-to narrate/coach on the summary instead of a single reading.
-
-See docs/llm-ergonomics-research.md: LLMs reason poorly over raw time-series;
-the effective pattern (TimeCAP, SitLLM) is summarize-then-reason. This module
-is the scaffolding for that — the summary stats and prompt wording are
-intentionally minimal placeholders, left for rule-tuning to refine later.
-"""
-
 from __future__ import annotations
-
 import json
 from datetime import datetime, timedelta, timezone
 

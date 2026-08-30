@@ -1,10 +1,10 @@
-"""Background task: periodically read Firebase sensor data and log it to history_store.
+from __future__ import annotations
+"""Background poller — syncs Firebase sensor data into SQLite and updates LED status.
 
 Needed because readings only flowed through the API on-demand (dashboard poll
 or /api/analyze) before this — nothing logged history for LLM window aggregation.
 """
 
-from __future__ import annotations
 
 import asyncio
 import logging

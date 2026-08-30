@@ -1,7 +1,6 @@
-"""Firebase read/write only — no business logic here (see processing.py)."""
-
 from __future__ import annotations
-
+import urllib.request
+import json
 from datetime import datetime, timezone
 from typing import Any
 
@@ -11,28 +10,90 @@ from firebase_admin import credentials, db
 import config
 
 _app: firebase_admin.App | None = None
+_use_rest_fallback: bool = False
 
 
-def init_firebase() -> firebase_admin.App:
-    global _app
+def init_firebase():
+    global _app, _use_rest_fallback
+    if _use_rest_fallback:
+        return None
     if _app is not None:
         return _app
-    cred = credentials.Certificate(config.FIREBASE_CREDENTIALS)
-    _app = firebase_admin.initialize_app(cred, {"databaseURL": config.FIREBASE_DATABASE_URL})
-    return _app
+    try:
+        cred = credentials.Certificate(config.FIREBASE_CREDENTIALS)
+        _app = firebase_admin.initialize_app(cred, {"databaseURL": config.FIREBASE_DATABASE_URL})
+        return _app
+    except Exception:
+        _use_rest_fallback = True
+        return None
 
 
 def get_ref(path: str = ""):
-    init_firebase()
-    return db.reference(path)
+    app = init_firebase()
+    if app and not _use_rest_fallback:
+        return db.reference(path)
+    return None
+
+
+def _rest_get(path: str) -> Any:
+    try:
+        url = f"{config.FIREBASE_DATABASE_URL.rstrip('/')}/{path.lstrip('/')}.json"
+        req = urllib.request.Request(url, headers={'User-Agent': 'PostureCare-Dashboard'})
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            return json.loads(resp.read().decode('utf-8'))
+    except Exception:
+        return None
+
+
+def _rest_put(path: str, data: Any) -> bool:
+    try:
+        url = f"{config.FIREBASE_DATABASE_URL.rstrip('/')}/{path.lstrip('/')}.json"
+        payload = json.dumps(data, ensure_ascii=False).encode('utf-8')
+        req = urllib.request.Request(url, data=payload, method='PUT', headers={'Content-Type': 'application/json'})
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            return True
+    except Exception:
+        return False
+
+
+def _rest_post(path: str, data: Any) -> str:
+    try:
+        url = f"{config.FIREBASE_DATABASE_URL.rstrip('/')}/{path.lstrip('/')}.json"
+        payload = json.dumps(data, ensure_ascii=False).encode('utf-8')
+        req = urllib.request.Request(url, data=payload, method='POST', headers={'Content-Type': 'application/json'})
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            res_data = json.loads(resp.read().decode('utf-8'))
+            return res_data.get('name', '') if isinstance(res_data, dict) else ''
+    except Exception:
+        return ""
 
 
 def read_sensor_raw() -> Any:
-    return get_ref(config.FIREBASE_SENSOR_PATH).get()
+    global _use_rest_fallback
+    if not _use_rest_fallback:
+        try:
+            ref = get_ref(config.FIREBASE_SENSOR_PATH)
+            if ref:
+                return ref.get()
+        except Exception:
+            _use_rest_fallback = True
+    return _rest_get(config.FIREBASE_SENSOR_PATH)
 
 
 def get_advice_list(limit: int = 5) -> list[dict]:
-    data = get_ref(config.FIREBASE_ADVICE_PATH).get() or {}
+    global _use_rest_fallback
+    data = None
+    if not _use_rest_fallback:
+        try:
+            ref = get_ref(config.FIREBASE_ADVICE_PATH)
+            if ref:
+                data = ref.get()
+        except Exception:
+            _use_rest_fallback = True
+
+    if data is None:
+        data = _rest_get(config.FIREBASE_ADVICE_PATH) or {}
+
     if not isinstance(data, dict):
         return []
     items = sorted(data.items(), key=lambda x: x[0], reverse=True)[:limit]
@@ -40,9 +101,16 @@ def get_advice_list(limit: int = 5) -> list[dict]:
 
 
 def push_led_state(is_on: bool) -> None:
-    """Single node (not a log) — firmware polls this to drive the status LED:
-    true = light on (elevated risk), false = light off (normal)."""
-    get_ref(config.FIREBASE_LED_PATH).set(is_on)
+    global _use_rest_fallback
+    if not _use_rest_fallback:
+        try:
+            ref = get_ref(config.FIREBASE_LED_PATH)
+            if ref:
+                ref.set(is_on)
+                return
+        except Exception:
+            _use_rest_fallback = True
+    _rest_put(config.FIREBASE_LED_PATH, is_on)
 
 
 def push_advice(advice: dict, reading: dict) -> str:
@@ -56,5 +124,13 @@ def push_advice(advice: dict, reading: dict) -> str:
         "brightness_lux": reading["brightness_lux"],
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    ref = get_ref(config.FIREBASE_ADVICE_PATH).push(payload)
-    return ref.key or ""
+    global _use_rest_fallback
+    if not _use_rest_fallback:
+        try:
+            ref = get_ref(config.FIREBASE_ADVICE_PATH)
+            if ref:
+                res = ref.push(payload)
+                return res.key or ""
+        except Exception:
+            _use_rest_fallback = True
+    return _rest_post(config.FIREBASE_ADVICE_PATH, payload)

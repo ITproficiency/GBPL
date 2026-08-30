@@ -1,3 +1,4 @@
+from __future__ import annotations
 import time
 from pathlib import Path
 
@@ -140,8 +141,10 @@ def analyze_now():
     }
 
 
+from typing import Optional
+
 @router.post("/insights")
-def create_insight(window_minutes: int | None = None):
+def create_insight(window_minutes: Optional[int] = None):
     """Aggregate the recent window from history_store and ask the LLM to narrate it."""
     global _last_insight_at
 
