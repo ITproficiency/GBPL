@@ -2,6 +2,12 @@
 backend/data/rules.json
 backend/data/history.db
 
+# Secrets
+backend/serviceAccountKey.json
+backend/.env
+.env
+serviceAccountKey.json
+
 # Virtual Environments
 venv/
 */venv/

@@ -11,11 +11,14 @@ import urllib.request
 
 class FirebaseSyncWorker:
     """Non-blocking background worker to sync AI tracking metrics & warnings to Firebase RTDB."""
-    def __init__(self, database_url="https://gpbl-iot-llms-default-rtdb.asia-southeast1.firebasedatabase.app"):
+    def __init__(self, database_url="https://gpbl-iot-llms-default-rtdb.asia-southeast1.firebasedatabase.app", on_calibrate=None):
         self.url = database_url.rstrip("/") + "/ai_data.json"
         self.latest_data = None
         self.lock = threading.Lock()
         self.running = True
+        self.on_calibrate = on_calibrate
+        self.last_calib_req = None
+        self.calib_check_counter = 0
         self.thread = threading.Thread(target=self._worker_loop, daemon=True)
         self.thread.start()
 
@@ -24,11 +27,24 @@ class FirebaseSyncWorker:
             "pitch": round(float(pitch), 2) if pitch is not None else 0.0,
             "roll": round(float(roll), 2) if roll is not None else 0.0,
             "yaw": round(float(yaw), 2) if yaw is not None else 0.0,
+            "camera_distance_cm": round(float(dist_cm), 1) if dist_cm is not None else 0.0,
+            "ai_distance_cm": round(float(dist_cm), 1) if dist_cm is not None else 0.0,
             "distance_cm": round(float(dist_cm), 1) if dist_cm is not None else 0.0,
             "ear": round(float(ear), 3) if ear is not None else 0.0,
             "blinks": int(blinks),
+            "blink_rate": int(blinks),
+            "head_pitch": round(float(pitch), 2) if pitch is not None else 0.0,
+            "head_roll": round(float(roll), 2) if roll is not None else 0.0,
+            "head_yaw": round(float(yaw), 2) if yaw is not None else 0.0,
             "warnings": warnings if warnings else [],
             "posture_status": posture_status,
+            "head_pose_thresholds": {
+                "pitch_down_max_deg": 5.0,
+                "pitch_up_max_deg": 5.0,
+                "roll_max_deg": 10.0,
+                "yaw_max_deg": 20.0,
+                "distance_min_cm": 40.0
+            },
             "nose_x": round(float(nose_x), 3) if nose_x is not None else 0.5,
             "nose_y": round(float(nose_y), 3) if nose_y is not None else 0.55,
             "timestamp": time.time()
@@ -59,6 +75,19 @@ class FirebaseSyncWorker:
                 except Exception:
                     pass
 
+            self.calib_check_counter += 1
+            if self.calib_check_counter >= 3 and self.on_calibrate:
+                self.calib_check_counter = 0
+                try:
+                    calib_url = self.url.replace(".json", "/calibrate_req.json")
+                    with urllib.request.urlopen(calib_url, timeout=0.8) as resp:
+                        calib_val = json.loads(resp.read().decode('utf-8'))
+                        if calib_val is not None and calib_val != self.last_calib_req:
+                            self.last_calib_req = calib_val
+                            self.on_calibrate()
+                except Exception:
+                    pass
+
             time.sleep(0.15)
 
     def stop(self):
@@ -76,7 +105,8 @@ class BlinkCounter:
         self.video_path = video_path
         self.save_video = save_video
         self.output_filename = output_filename
-        self.firebase_sync = FirebaseSyncWorker()
+        self.pose_reference = None
+        self.firebase_sync = FirebaseSyncWorker(on_calibrate=self.calibrate_head_pose)
         
         # Define facial landmarks for eye detection
         self.RIGHT_EYE = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
@@ -100,6 +130,7 @@ class BlinkCounter:
         # Distance Estimation & Calibration parameters
         self.K_factor = 4200.0  # Calibration constant
         self.current_eye_pixel_dist = 0.0
+        self.last_raw_pose = None
         
         # Blink detection parameters
         self.ear_threshold = ear_threshold  # Eye aspect ratio threshold for blink detection
@@ -118,6 +149,12 @@ class BlinkCounter:
             save_dir = "DATA/VIDEOS/OUTPUTS"
             os.makedirs(save_dir, exist_ok=True)
             self.output_filename = os.path.join(save_dir, self.output_filename)
+
+    def calibrate_head_pose(self):
+        """Set current orientation as zero reference."""
+        if self.last_raw_pose is not None:
+            self.pose_reference = self.last_raw_pose
+            print(f"[POSE CALIBRATE SUCCESS] Reference set to Pitch={self.pose_reference[0]:.1f}, Yaw={self.pose_reference[1]:.1f}, Roll={self.pose_reference[2]:.1f}")
 
     def calibrate_distance(self, known_distance_cm=50.0):
         """Fine-tune the distance multiplier K when user sits at a known distance (e.g. 50cm)."""
@@ -337,24 +374,35 @@ class BlinkCounter:
                     fh, fw = frame.shape[:2]
                     pitch, yaw, roll = self.estimate_head_pose(face_landmarks, fw, fh)
 
+                    # Threshold constants for ergonomic alerts
+                    PITCH_DOWN_MAX = 5.0
+                    PITCH_UP_MAX = 5.0
+                    ROLL_MAX = 10.0
+                    YAW_MAX = 20.0
+                    DIST_MIN = 40.0
+
                     active_warnings = []
                     is_danger = False
-                    if pitch is not None and pitch > 15:
-                        active_warnings.append(f"Head tilted down too much (+{pitch:.1f}° > 15°)")
+                    if pitch is not None and pitch > PITCH_DOWN_MAX:
+                        active_warnings.append(f"Head tilted down too much ({pitch:.1f}° > {PITCH_DOWN_MAX:.0f}°)")
                         is_danger = True
-                    elif pitch is not None and pitch < -15:
-                        active_warnings.append(f"Head tilted back too much ({pitch:.1f}° < -15°)")
-                        is_danger = True
-
-                    if roll is not None and abs(roll) > 15:
-                        active_warnings.append(f"Head tilted off axis ({roll:.1f}°)")
+                    elif pitch is not None and pitch < -PITCH_UP_MAX:
+                        active_warnings.append(f"Head tilted back too much ({pitch:.1f}° < -{PITCH_UP_MAX:.0f}°)")
                         is_danger = True
 
-                    if dist_cm is not None and dist_cm < 40:
-                        active_warnings.append(f"Sitting too close to screen ({dist_cm:.1f} cm < 40 cm)")
+                    if roll is not None and abs(roll) > ROLL_MAX:
+                        active_warnings.append(f"Head tilted off axis ({roll:.1f}° > {ROLL_MAX:.0f}°)")
                         is_danger = True
 
-                    posture_status = "DANGER" if is_danger else ("WARNING" if (abs(pitch or 0) > 10 or abs(roll or 0) > 10) else "GOOD")
+                    if yaw is not None and abs(yaw) > YAW_MAX:
+                        active_warnings.append(f"Head turned away ({yaw:.1f}° > {YAW_MAX:.0f}°)")
+                        is_danger = True
+
+                    if dist_cm is not None and dist_cm < DIST_MIN:
+                        active_warnings.append(f"Sitting too close to screen ({dist_cm:.1f} cm < {DIST_MIN:.0f} cm)")
+                        is_danger = True
+
+                    posture_status = "DANGER" if is_danger else ("WARNING" if (abs(pitch or 0) > 3.5 or abs(roll or 0) > 7.0 or abs(yaw or 0) > 15.0) else "GOOD")
 
                     nose_pt = face_landmarks[1] if (face_landmarks is not None and len(face_landmarks) > 1) else (fw // 2, fh // 2)
                     norm_nose_x = nose_pt[0] / fw if fw > 0 else 0.5

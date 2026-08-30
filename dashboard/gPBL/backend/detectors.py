@@ -91,19 +91,38 @@ def detect_head_pose(
     pitch: float | None, roll: float | None, yaw: float | None, cfg: dict
 ) -> list[Event]:
     events: list[Event] = []
-    if pitch is not None and pitch > cfg["pitch_forward_max_deg"]:
+    pitch_down_max = cfg.get("pitch_down_max_deg", cfg.get("pitch_forward_max_deg", 5.0))
+    pitch_up_max = cfg.get("pitch_up_max_deg", 5.0)
+    roll_max = cfg.get("roll_max_deg", 10.0)
+    yaw_max = cfg.get("yaw_max_deg", 20.0)
+
+    if pitch is not None and pitch > pitch_down_max:
         events.append(_event(
-            "head_pose", "forward_head", pitch,
-            f"Forward head tilt ({pitch:.0f}° > {cfg['pitch_forward_max_deg']}°)",
+            "head_pose", "head_too_low", pitch,
+            f"Head tilted down too much ({pitch:.1f}° > {pitch_down_max:.0f}°)",
+            score=2
         ))
-    if roll is not None and abs(roll) > cfg["roll_max_deg"]:
+    elif pitch is not None and pitch < -pitch_up_max:
         events.append(_event(
-            "head_pose", "head_tilt", roll, f"Head tilted sideways ({roll:.0f}°)",
+            "head_pose", "head_too_high", pitch,
+            f"Head tilted back too much ({pitch:.1f}° < -{pitch_up_max:.0f}°)",
+            score=2
         ))
-    if yaw is not None and abs(yaw) > cfg["yaw_max_deg"]:
+
+    if roll is not None and abs(roll) > roll_max:
         events.append(_event(
-            "head_pose", "head_turned", yaw, f"Head turned away ({yaw:.0f}°)",
+            "head_pose", "head_tilted", roll,
+            f"Head tilted off axis ({roll:.1f}° > {roll_max:.0f}°)",
+            score=2
         ))
+
+    if yaw is not None and abs(yaw) > yaw_max:
+        events.append(_event(
+            "head_pose", "head_turned", yaw,
+            f"Head turned away ({yaw:.1f}° > {yaw_max:.0f}°)",
+            score=1
+        ))
+
     return events
 
 

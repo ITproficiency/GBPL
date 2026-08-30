@@ -172,6 +172,34 @@ def get_insights(limit: int = 5):
 import tracking_manager
 
 
+@router.post("/calibrate/head-pose")
+def calibrate_head_pose():
+    """Trigger zero-angle calibration on AI tracking module via Firebase."""
+    try:
+        ok = firebase_client.trigger_head_pose_calibration()
+        if not ok:
+            raise HTTPException(status_code=502, detail="Failed to write calibration request to Firebase")
+        return {"status": "ok", "message": "Head pose zero reference calibration requested"}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+class DistanceCalibReq(BaseModel):
+    known_distance_cm: float = Field(default=50.0, ge=10.0, le=200.0)
+
+
+@router.post("/calibrate/distance")
+def calibrate_distance(req: DistanceCalibReq):
+    """Trigger camera distance calibration factor K via Firebase."""
+    try:
+        ok = firebase_client.trigger_distance_calibration(req.known_distance_cm)
+        if not ok:
+            raise HTTPException(status_code=502, detail="Failed to write distance calibration request to Firebase")
+        return {"status": "ok", "message": f"Distance calibration requested at {req.known_distance_cm} cm"}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
 class TrackingStartRequest(BaseModel):
     source: str = "0"
 

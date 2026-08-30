@@ -43,6 +43,13 @@ class FirebaseSyncWorker:
             "head_yaw": round(float(yaw), 2) if yaw is not None else 0.0,
             "warnings": warnings if warnings else [],
             "posture_status": posture_status,
+            "head_pose_thresholds": {
+                "pitch_down_max_deg": 5.0,
+                "pitch_up_max_deg": 5.0,
+                "roll_max_deg": 10.0,
+                "yaw_max_deg": 20.0,
+                "distance_min_cm": 40.0
+            },
             "nose_x": round(float(nose_x), 3) if nose_x is not None else 0.5,
             "nose_y": round(float(nose_y), 3) if nose_y is not None else 0.55,
             "timestamp": time.time()
@@ -84,9 +91,9 @@ class FirebaseSyncWorker:
                 except Exception:
                     pass
 
-            # Check calibration requests from web UI (~every 1.5s)
+            # Periodically check for calibration requests from web UI (~every 0.45s)
             self.calib_check_counter += 1
-            if self.calib_check_counter >= 10:
+            if self.calib_check_counter >= 3:
                 self.calib_check_counter = 0
                 if self.on_calibrate_pose or self.on_calibrate:
                     try:
@@ -564,39 +571,53 @@ class BlinkCounterandEARPlot:
             cv.putText(frame, f"Roll: {roll:.1f}deg", (5, 116),
                        cv.FONT_HERSHEY_SIMPLEX, 0.35, pose_color, 1, cv.LINE_AA)
 
+        # Threshold constants for ergonomic alerts
+        PITCH_DOWN_MAX = 5.0
+        PITCH_UP_MAX = 5.0
+        ROLL_MAX = 10.0
+        YAW_MAX = 20.0
+        DIST_MIN = 40.0
+
         # Warnings collection and visualization
         active_warnings = []
         is_danger = False
 
         warning_y = 140
-        if pitch is not None and pitch > 5:
+        if pitch is not None and pitch > PITCH_DOWN_MAX:
             cv.putText(frame, "WARNING: HEAD TOO LOW!", (10, warning_y),
                        cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2, cv.LINE_AA)
             warning_y += 25
-            active_warnings.append(f"Head tilted down too much ({pitch:.1f}°)")
+            active_warnings.append(f"Head tilted down too much ({pitch:.1f}° > {PITCH_DOWN_MAX:.0f}°)")
             is_danger = True
 
-        if pitch is not None and pitch < -5:
+        if pitch is not None and pitch < -PITCH_UP_MAX:
             cv.putText(frame, "WARNING: HEAD TOO HIGH!", (10, warning_y),
                        cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2, cv.LINE_AA)
             warning_y += 25
-            active_warnings.append(f"Head tilted back too much ({pitch:.1f}°)")
+            active_warnings.append(f"Head tilted back too much ({pitch:.1f}° < -{PITCH_UP_MAX:.0f}°)")
             is_danger = True
 
-        if roll is not None and abs(roll) > 10:
+        if roll is not None and abs(roll) > ROLL_MAX:
             cv.putText(frame, "WARNING: HEAD TILTED!", (10, warning_y),
                        cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2, cv.LINE_AA)
             warning_y += 25
-            active_warnings.append(f"Head tilted off axis ({roll:.1f}°)")
+            active_warnings.append(f"Head tilted off axis ({roll:.1f}° > {ROLL_MAX:.0f}°)")
             is_danger = True
 
-        if dist_cm is not None and dist_cm < 40:
+        if yaw is not None and abs(yaw) > YAW_MAX:
+            cv.putText(frame, "WARNING: HEAD TURNED!", (10, warning_y),
+                       cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 200, 255), 2, cv.LINE_AA)
+            warning_y += 25
+            active_warnings.append(f"Head turned away ({yaw:.1f}° > {YAW_MAX:.0f}°)")
+            is_danger = True
+
+        if dist_cm is not None and dist_cm < DIST_MIN:
             cv.putText(frame, "WARNING: TOO CLOSE!", (10, warning_y),
                        cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2, cv.LINE_AA)
-            active_warnings.append(f"Sitting too close to screen ({dist_cm:.1f} cm < 40 cm)")
+            active_warnings.append(f"Sitting too close to screen ({dist_cm:.1f} cm < {DIST_MIN:.0f} cm)")
             is_danger = True
 
-        posture_status = "DANGER" if is_danger else ("WARNING" if (abs(pitch or 0) > 10 or abs(roll or 0) > 10) else "GOOD")
+        posture_status = "DANGER" if is_danger else ("WARNING" if (abs(pitch or 0) > 3.5 or abs(roll or 0) > 7.0 or abs(yaw or 0) > 15.0) else "GOOD")
 
         # Extract normalized nose tip (landmark index 1)
         fh, fw = frame.shape[:2]

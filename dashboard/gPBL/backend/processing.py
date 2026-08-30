@@ -102,15 +102,24 @@ def build_llm_user_prompt(
     distance_cm: float,
     brightness_lux: float,
     sitting_minutes: int,
+    head_pitch: float | None = None,
+    head_roll: float | None = None,
+    head_yaw: float | None = None,
 ) -> str:
     p = get_rules()["llm_prompt"]
-    return (
+    prompt = (
         f"Data from PostureCare sensors:\n"
         f"- Distance to screen: {distance_cm:.0f}cm (Target: {p['distance_target']})\n"
         f"- Light levels: {brightness_lux:.0f} lux (Target: {p['light_target']})\n"
-        f"- Continuous sitting time: {sitting_minutes} minutes\n\n"
-        f"Give me specific advice."
+        f"- Continuous sitting time: {sitting_minutes} minutes\n"
     )
+    if head_pitch is not None or head_roll is not None or head_yaw is not None:
+        p_str = f"{head_pitch:.1f}°" if head_pitch is not None else "N/A"
+        r_str = f"{head_roll:.1f}°" if head_roll is not None else "N/A"
+        y_str = f"{head_yaw:.1f}°" if head_yaw is not None else "N/A"
+        prompt += f"- Head rotation angles: Pitch={p_str} (Target: -5° to +5°), Roll={r_str} (Target: ±10°), Yaw={y_str} (Target: ±20°)\n"
+    prompt += "\nGive me specific advice."
+    return prompt
 
 
 _presence_since: datetime | None = None
@@ -152,30 +161,57 @@ def process_reading(raw: Any, default_device_id: str = "esp32_001") -> dict | No
     active_distance = cam_dist if cam_dist is not None else ultra_dist
     distance_cm = active_distance if active_distance is not None else (ultra_dist if ultra_dist is not None else 0.0)
     sitting_minutes = track_sitting_minutes(active_distance, rules)
-
     ear = extract_float(raw, fields.get("ear", ["ear"])) if tracking_active else None
     blinks = extract_float(raw, fields.get("blinks", ["blinks"])) if tracking_active else None
-    blink_rate_bpm = extract_float(raw, fields.get("blink_rate", ["blink_rate"])) if tracking_active else None
-    head_pitch = extract_float(raw, fields.get("head_pitch", ["head_pitch"])) if tracking_active else None
-    head_roll = extract_float(raw, fields.get("head_roll", ["head_roll"])) if tracking_active else None
-    head_yaw = extract_float(raw, fields.get("head_yaw", ["head_yaw"])) if tracking_active else None
+    blink_rate_bpm = extract_float(raw, fields.get("blink_rate", ["blink_rate", "blink_rate_bpm"])) if tracking_active else None
+    head_pitch = extract_float(raw, fields.get("head_pitch", ["head_pitch", "pitch"])) if tracking_active else None
+    head_roll = extract_float(raw, fields.get("head_roll", ["head_roll", "roll"])) if tracking_active else None
+    head_yaw = extract_float(raw, fields.get("head_yaw", ["head_yaw", "yaw"])) if tracking_active else None
     raw_warnings = raw.get("warnings") if (tracking_active and isinstance(raw.get("warnings"), list)) else []
 
     risk = evaluate_risk(distance_cm, brightness_lux, sitting_minutes)
     extended_events = detectors.run_extended_events(blink_rate_bpm, head_pitch, head_roll, head_yaw, rules) if tracking_active else []
 
-    # Merge AI tracking warnings & escalate risk level if active warnings exist
+    # Merge AI tracking warnings & detector events
     all_warnings = [w for w in raw_warnings if isinstance(w, str) and w.strip()]
     for msg in risk["warning_messages"]:
         if msg and "PostureCare targets" not in msg and msg not in all_warnings:
             all_warnings.append(msg)
+    for evt in extended_events:
+        msg = evt.get("message")
+        if msg and msg not in all_warnings:
+            all_warnings.append(msg)
+
+    # Derive posture status (GOOD / WARNING / DANGER)
+    raw_posture = raw.get("posture_status")
+    if raw_posture in ["GOOD", "WARNING", "DANGER"]:
+        posture_status = raw_posture
+    else:
+        has_danger_event = any(e.get("flag") in ["head_too_low", "head_too_high", "head_tilted", "critically_close"] for e in extended_events)
+        if has_danger_event:
+            posture_status = "DANGER"
+        elif len(all_warnings) > 0:
+            posture_status = "WARNING"
+        else:
+            posture_status = "GOOD"
 
     risk_level = risk["risk_level"]
     if len(all_warnings) > 0 and risk_level == "normal":
-        risk_level = "high" if len(all_warnings) >= 2 else "warning"
+        risk_level = "high" if (posture_status == "DANGER" or len(all_warnings) >= 2) else "warning"
 
     if len(all_warnings) == 0:
         all_warnings = ["All readings within PostureCare targets"]
+
+    head_pose_cfg = rules.get("head_pose", {})
+    head_pose_thresholds = {
+        "pitch_down_max_deg": head_pose_cfg.get("pitch_down_max_deg", 5),
+        "pitch_up_max_deg": head_pose_cfg.get("pitch_up_max_deg", 5),
+        "roll_max_deg": head_pose_cfg.get("roll_max_deg", 10),
+        "yaw_max_deg": head_pose_cfg.get("yaw_max_deg", 20),
+    }
+
+    nose_x = extract_float(raw, ["nose_x"])
+    nose_y = extract_float(raw, ["nose_y"])
 
     return {
         "device_id": raw.get("device_id") or default_device_id,
@@ -191,7 +227,11 @@ def process_reading(raw: Any, default_device_id: str = "esp32_001") -> dict | No
         "head_pitch_deg": head_pitch,
         "head_roll_deg": head_roll,
         "head_yaw_deg": head_yaw,
-        "risk_score": risk["risk_score"] + len(raw_warnings),
+        "nose_x": round(nose_x, 3) if nose_x is not None else 0.5,
+        "nose_y": round(nose_y, 3) if nose_y is not None else 0.55,
+        "head_pose_thresholds": head_pose_thresholds,
+        "posture_status": posture_status,
+        "risk_score": risk["risk_score"] + sum(e.get("score", 1) for e in extended_events),
         "risk_level": risk_level,
         "warning_messages": all_warnings,
         "events": extended_events,

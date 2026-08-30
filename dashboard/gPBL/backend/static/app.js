@@ -11,6 +11,18 @@ const els = {
   sittingMinutes: document.getElementById("sittingMinutes"),
   blinkRate: document.getElementById("blinkRate"),
   headPose: document.getElementById("headPose"),
+  pitchVal: document.getElementById("pitchVal"),
+  rollVal: document.getElementById("rollVal"),
+  yawVal: document.getElementById("yawVal"),
+  pitchChip: document.getElementById("pitchChip"),
+  rollChip: document.getElementById("rollChip"),
+  yawChip: document.getElementById("yawChip"),
+  poseStatusBadge: document.getElementById("poseStatusBadge"),
+  focusPostureStatus: document.getElementById("focusPostureStatus"),
+  focusPostureIcon: document.getElementById("focusPostureIcon"),
+  focusPitchChip: document.getElementById("focusPitchChip"),
+  focusRollChip: document.getElementById("focusRollChip"),
+  focusYawChip: document.getElementById("focusYawChip"),
   riskLevel: document.getElementById("riskLevel"),
   lastUpdate: document.getElementById("lastUpdate"),
   alertList: document.getElementById("alertList"),
@@ -172,7 +184,80 @@ function renderSensor(data) {
   if (els.sittingMinutes) els.sittingMinutes.textContent = data.sitting_minutes ?? "--";
   if (els.blinkRate) els.blinkRate.textContent = data.blink_rate_bpm != null ? data.blink_rate_bpm.toFixed(1) : "--";
   if (els.headPose) els.headPose.textContent = formatHeadPose(data.head_pitch_deg, data.head_roll_deg, data.head_yaw_deg);
-  
+
+  // Head Pose & Rotation Angle Telemetry
+  const th = data.head_pose_thresholds || {
+    pitch_down_max_deg: 5.0,
+    pitch_up_max_deg: 5.0,
+    roll_max_deg: 10.0,
+    yaw_max_deg: 20.0,
+  };
+
+  const pitch = data.head_pitch_deg;
+  const roll = data.head_roll_deg;
+  const yaw = data.head_yaw_deg;
+
+  if (els.pitchVal) els.pitchVal.textContent = pitch != null ? (pitch > 0 ? "+" : "") + Number(pitch).toFixed(1) + "°" : "--";
+  if (els.rollVal) els.rollVal.textContent = roll != null ? (roll > 0 ? "+" : "") + Number(roll).toFixed(1) + "°" : "--";
+  if (els.yawVal) els.yawVal.textContent = yaw != null ? (yaw > 0 ? "+" : "") + Number(yaw).toFixed(1) + "°" : "--";
+
+  // Individual chip state evaluation
+  let pitchState = "ok";
+  if (pitch != null) {
+    if (pitch > th.pitch_down_max_deg || pitch < -th.pitch_up_max_deg) pitchState = "danger";
+    else if (Math.abs(pitch) > 3.5) pitchState = "warning";
+  }
+  if (els.pitchChip) els.pitchChip.className = "pose-chip " + pitchState;
+
+  let rollState = "ok";
+  if (roll != null) {
+    if (Math.abs(roll) > th.roll_max_deg) rollState = "danger";
+    else if (Math.abs(roll) > 7.0) rollState = "warning";
+  }
+  if (els.rollChip) els.rollChip.className = "pose-chip " + rollState;
+
+  let yawState = "ok";
+  if (yaw != null) {
+    if (Math.abs(yaw) > th.yaw_max_deg) yawState = "danger";
+    else if (Math.abs(yaw) > 15.0) yawState = "warning";
+  }
+  if (els.yawChip) els.yawChip.className = "pose-chip " + yawState;
+
+  // Posture status badge
+  const postStatus = data.posture_status || (pitchState === "danger" || rollState === "danger" || yawState === "danger" ? "DANGER" : ((pitchState === "warning" || rollState === "warning" || yawState === "warning") ? "WARNING" : "GOOD"));
+
+  if (els.poseStatusBadge) {
+    let badgeText = postStatus;
+    if (pitch != null && pitch > th.pitch_down_max_deg) badgeText = "HEAD TOO LOW";
+    else if (pitch != null && pitch < -th.pitch_up_max_deg) badgeText = "HEAD TOO HIGH";
+    else if (roll != null && Math.abs(roll) > th.roll_max_deg) badgeText = "HEAD TILTED";
+    else if (yaw != null && Math.abs(yaw) > th.yaw_max_deg) badgeText = "HEAD TURNED";
+
+    els.poseStatusBadge.textContent = badgeText;
+    els.poseStatusBadge.className = "pose-status-badge status-" + postStatus.toLowerCase();
+  }
+
+  // Update Focus Hub posture banner
+  if (els.focusPostureStatus) {
+    els.focusPostureStatus.textContent = postStatus;
+    els.focusPostureStatus.className = "posture-val status-" + postStatus.toLowerCase();
+  }
+  if (els.focusPostureIcon) {
+    els.focusPostureIcon.textContent = postStatus === "DANGER" ? "⚠️" : (postStatus === "WARNING" ? "⚡" : "🛡️");
+  }
+  if (els.focusPitchChip) {
+    els.focusPitchChip.textContent = "P: " + (pitch != null ? (pitch > 0 ? "+" : "") + Number(pitch).toFixed(1) + "°" : "--");
+    els.focusPitchChip.className = "mini-chip " + pitchState;
+  }
+  if (els.focusRollChip) {
+    els.focusRollChip.textContent = "R: " + (roll != null ? (roll > 0 ? "+" : "") + Number(roll).toFixed(1) + "°" : "--");
+    els.focusRollChip.className = "mini-chip " + rollState;
+  }
+  if (els.focusYawChip) {
+    els.focusYawChip.textContent = "Y: " + (yaw != null ? (yaw > 0 ? "+" : "") + Number(yaw).toFixed(1) + "°" : "--");
+    els.focusYawChip.className = "mini-chip " + yawState;
+  }
+
   if (els.riskLevel) {
     els.riskLevel.textContent = data.risk_level.toUpperCase();
     els.riskLevel.className = "value risk-" + data.risk_level;
@@ -187,12 +272,18 @@ function renderSensor(data) {
   if (msgs.length === 0) {
     els.alertList.innerHTML = '<li class="empty">All readings within PostureCare targets</li>';
   } else {
-    els.alertList.innerHTML = msgs.map(m => `
-      <li class="alert-item ${data.risk_level}">
-        <strong>${data.risk_level.toUpperCase()}</strong>
-        <div class="msg">${m}</div>
-      </li>
-    `).join("");
+    els.alertList.innerHTML = msgs.map(m => {
+      const isHeadPose = m.toLowerCase().includes("head") || m.toLowerCase().includes("tilted") || m.toLowerCase().includes("turn");
+      const icon = isHeadPose ? "👤" : (m.toLowerCase().includes("close") ? "📏" : "⚠️");
+      return `
+        <li class="alert-item ${data.risk_level}">
+          <div class="alert-item-header">
+            <strong>${icon} ${data.risk_level.toUpperCase()}</strong>
+          </div>
+          <div class="msg">${m}</div>
+        </li>
+      `;
+    }).join("");
   }
 
   // Use backend flag — same rule as POST /api/analyze
@@ -221,6 +312,20 @@ function renderSensor(data) {
   distanceChart.data.datasets[0].data = chartPoints.map((r) => r.distance_cm);
   distanceChart.data.datasets[1].data = chartPoints.map((r) => r.ultrasonic_distance_cm ?? r.distance_cm);
   distanceChart.update("none");
+
+  // 3. Render 3D Head Orientation Axis Follow on Camera Feed Canvas
+  const poseCanvas = document.getElementById("cameraPoseCanvas");
+  if (poseCanvas) {
+    drawHeadAxesOnCanvas(
+      poseCanvas,
+      data.head_pitch_deg,
+      data.head_yaw_deg,
+      data.head_roll_deg,
+      data.nose_x,
+      data.nose_y,
+      isAxesFollowEnabled
+    );
+  }
 }
 
 async function fetchRules() {
@@ -235,12 +340,14 @@ async function fetchRules() {
   }
 
   if (!els.rulesInfo) return;
-  const d = rules.distance_cm;
-  const b = rules.brightness_lux;
-  const s = rules.sitting_minutes;
+  const d = rules.distance_cm || { target_min: 50, target_max: 70 };
+  const b = rules.brightness_lux || { target_min: 300 };
+  const s = rules.sitting_minutes || { max_continuous: 20 };
+  const hp = rules.head_pose || { pitch_down_max_deg: 5, roll_max_deg: 10, yaw_max_deg: 20 };
   els.rulesInfo.innerHTML =
     `PostureCare rules: distance ${d.target_min}-${d.target_max} cm · ` +
-    `light ${b.target_min}+ lux · sitting max ${s.max_continuous} min`;
+    `light ${b.target_min}+ lux · sitting max ${s.max_continuous} min · ` +
+    `head pose: pitch ±${hp.pitch_down_max_deg || 5}° · roll ±${hp.roll_max_deg || 10}° · yaw ±${hp.yaw_max_deg || 20}°`;
 }
 
 async function fetchSensor() {
@@ -566,4 +673,189 @@ if (camSnapshotBtn) {
       alert("Snapshot error: " + err.message);
     }
   });
+}
+
+/* ---------------- 3D Head Orientation Axis Follow Overlay ---------------- */
+let isAxesFollowEnabled = true;
+const camAxesToggleBtn = document.getElementById("camAxesToggleBtn");
+
+if (camAxesToggleBtn) {
+  camAxesToggleBtn.addEventListener("click", () => {
+    isAxesFollowEnabled = !isAxesFollowEnabled;
+    camAxesToggleBtn.classList.toggle("active", isAxesFollowEnabled);
+    const canvas = document.getElementById("cameraPoseCanvas");
+    if (canvas && !isAxesFollowEnabled) {
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  });
+}
+
+/**
+ * Draw 3D Head Pose Coordinate Axes (X: Red, Y: Green, Z: Blue)
+ * Anchored to the nose tip (noseNormX, noseNormY) and dynamically rotating
+ * according to calibrated Pitch, Yaw, Roll angles (matching blink_counter_and_EAR_plot.py).
+ */
+function drawHeadAxesOnCanvas(canvas, pitchDeg, yawDeg, rollDeg, noseNormX, noseNormY, isEnabled) {
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const rect = canvas.getBoundingClientRect();
+  const width = rect.width || 640;
+  const height = rect.height || 480;
+
+  if (canvas.width !== Math.round(width) || canvas.height !== Math.round(height)) {
+    canvas.width = Math.round(width);
+    canvas.height = Math.round(height);
+  }
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!isEnabled || pitchDeg == null || yawDeg == null || rollDeg == null) return;
+
+  // Origin point based on normalized nose coordinates
+  const nx = noseNormX != null && !isNaN(noseNormX) ? Number(noseNormX) : 0.5;
+  const ny = noseNormY != null && !isNaN(noseNormY) ? Number(noseNormY) : 0.55;
+
+  const originX = isMirrored ? (1.0 - nx) * canvas.width : nx * canvas.width;
+  const originY = ny * canvas.height;
+
+  // Convert angles to radians
+  const p = (Number(pitchDeg) * Math.PI) / 180.0;
+  const y = (Number(yawDeg) * Math.PI) / 180.0;
+  const r = (Number(rollDeg) * Math.PI) / 180.0;
+
+  // Combined rotation matrix R = Rz * Rx * Ry
+  function rotateVector(vx, vy, vz) {
+    // 1. Ry * v (around Y / Yaw)
+    const ry_x = Math.cos(y) * vx + Math.sin(y) * vz;
+    const ry_y = vy;
+    const ry_z = -Math.sin(y) * vx + Math.cos(y) * vz;
+
+    // 2. Rx * (Ry * v) (around X / Pitch)
+    const rx_x = ry_x;
+    const rx_y = Math.cos(p) * ry_y - Math.sin(p) * ry_z;
+    const rx_z = Math.sin(p) * ry_y + Math.cos(p) * ry_z;
+
+    // 3. Rz * (Rx * Ry * v) (around Z / Roll)
+    const rz_x = Math.cos(r) * rx_x - Math.sin(r) * rx_y;
+    const rz_y = Math.sin(r) * rx_x + Math.cos(r) * rx_y;
+    const rz_z = rx_z;
+
+    return [rz_x, rz_y, rz_z];
+  }
+
+  const length = Math.min(canvas.width, canvas.height) * 0.18;
+  const sign = isMirrored ? -1 : 1;
+
+  // 3 standard axes in space:
+  // X: [length, 0, 0] (Red - right)
+  // Y: [0, length, 0] (Green - down)
+  // Z: [0, 0, -length] (Blue - out from nose toward camera)
+  const ax_x = rotateVector(length, 0, 0);
+  const ax_y = rotateVector(0, length, 0);
+  const ax_z = rotateVector(0, 0, -length);
+
+  const endX = { x: originX + ax_x[0] * sign, y: originY + ax_y[1] };
+  const endY = { x: originX + ax_y[0] * sign, y: originY + ax_y[1] };
+  const endZ = { x: originX + ax_z[0] * sign, y: originY + ax_z[1] };
+
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  function drawAxis(end, color, label) {
+    ctx.beginPath();
+    ctx.moveTo(originX, originY);
+    ctx.lineTo(end.x, end.y);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3.5;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 8;
+    ctx.stroke();
+
+    // Axis label
+    ctx.fillStyle = color;
+    ctx.font = "bold 13px system-ui, sans-serif";
+    ctx.shadowBlur = 4;
+    ctx.fillText(label, end.x + (end.x >= originX ? 6 : -14), end.y + (end.y >= originY ? 12 : -5));
+  }
+
+  // Draw X (Red), Y (Green), Z (Blue)
+  drawAxis(endX, "#ef4444", "X");
+  drawAxis(endY, "#22c55e", "Y");
+  drawAxis(endZ, "#38bdf8", "Z");
+
+  // Draw bright origin point at nose tip
+  ctx.beginPath();
+  ctx.arc(originX, originY, 5, 0, 2 * Math.PI);
+  ctx.fillStyle = "#ffffff";
+  ctx.shadowColor = "#38bdf8";
+  ctx.shadowBlur = 10;
+  ctx.fill();
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+/* ---------------- Calibrate Gốc Tọa Độ (Head Pose Zero Reference) ---------------- */
+function showToast(message, isSuccess = true) {
+  let toast = document.getElementById("pcToastNotification");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "pcToastNotification";
+    toast.className = "pc-toast";
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.className = "pc-toast show " + (isSuccess ? "success" : "error");
+  clearTimeout(toast._timeout);
+  toast._timeout = setTimeout(() => {
+    toast.className = "pc-toast";
+  }, 3500);
+}
+
+async function triggerCalibrateHeadPose(btn) {
+  const originalText = btn ? btn.innerHTML : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = "⏳ Calibrating...";
+    btn.classList.add("calibrating-pulse");
+  }
+
+  try {
+    const res = await fetch("/api/calibrate/head-pose", { method: "POST" });
+    const data = await res.json();
+    if (res.ok) {
+      showToast("🎯 Đã calibrate gốc tọa độ (0,0,0) thành công!", true);
+      if (typeof playTone === "function") playTone(580, 160);
+    } else {
+      showToast("⚠️ Calibrate lỗi: " + (data.detail || "Không thể gửi yêu cầu"), false);
+    }
+  } catch (err) {
+    showToast("⚠️ Lỗi kết nối: " + err.message, false);
+  } finally {
+    if (btn) {
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        btn.classList.remove("calibrating-pulse");
+      }, 1000);
+    }
+  }
+}
+
+const cardCalibrateBtn = document.getElementById("cardCalibrateBtn");
+if (cardCalibrateBtn) {
+  cardCalibrateBtn.addEventListener("click", () => triggerCalibrateHeadPose(cardCalibrateBtn));
+}
+
+const camCalibrateBtn = document.getElementById("camCalibrateBtn");
+if (camCalibrateBtn) {
+  camCalibrateBtn.addEventListener("click", () => triggerCalibrateHeadPose(camCalibrateBtn));
+}
+
+const focusCalibrateBtn = document.getElementById("focusCalibrateBtn");
+if (focusCalibrateBtn) {
+  focusCalibrateBtn.addEventListener("click", () => triggerCalibrateHeadPose(focusCalibrateBtn));
 }

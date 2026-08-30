@@ -89,6 +89,25 @@
             </div>
           </div>
 
+          <!-- Live Posture Status & Head Rotation Alert in Focus View -->
+          <div class="focus-posture-banner" id="focusPostureBanner">
+            <div class="posture-banner-left">
+              <span class="posture-icon" id="focusPostureIcon">🛡️</span>
+              <div>
+                <span class="posture-label">Head Pose &amp; Posture</span>
+                <strong class="posture-val" id="focusPostureStatus">GOOD</strong>
+              </div>
+            </div>
+            <div class="posture-banner-right">
+              <div class="posture-angles-mini" id="focusPoseAngles">
+                <span class="mini-chip" id="focusPitchChip">P: --</span>
+                <span class="mini-chip" id="focusRollChip">R: --</span>
+                <span class="mini-chip" id="focusYawChip">Y: --</span>
+              </div>
+              <button id="focusCalibrateBtn" class="mini-calib-btn" title="Set current head pose as zero reference (0,0,0)">🎯 Calibrate (0,0,0)</button>
+            </div>
+          </div>
+
           <p class="focus-active-task" id="focusActiveTask">No active task selected</p>
           <p class="focus-session-count" id="focusSessionCount">Total Sessions Completed: 0</p>
         </div>
@@ -132,9 +151,29 @@
               <div class="label">Brightness</div>
               <div class="value"><span id="brightness">--</span> <span class="unit">lux</span></div>
             </div>
-            <div class="card">
-              <div class="label">Head Pose</div>
-              <div class="value" id="headPose">--</div>
+            <div class="card card-head-pose">
+              <div class="card-top-row">
+                <div class="label">Head Pose &amp; Rotation</div>
+                <div class="pose-top-actions">
+                  <span class="pose-status-badge" id="poseStatusBadge">GOOD</span>
+                  <button id="cardCalibrateBtn" class="pose-calib-btn" title="Set current head orientation as (0,0,0) reference">🎯 Calibrate Origin</button>
+                </div>
+              </div>
+              <div class="pose-chips-row" id="poseChipsRow">
+                <div class="pose-chip" id="pitchChip" title="Pitch: Forward/Backward tilt (Threshold ±5°)">
+                  <span class="pose-chip-axis">P</span>
+                  <span class="pose-chip-val" id="pitchVal">--</span>
+                </div>
+                <div class="pose-chip" id="rollChip" title="Roll: Sideways tilt (Threshold ±10°)">
+                  <span class="pose-chip-axis">R</span>
+                  <span class="pose-chip-val" id="rollVal">--</span>
+                </div>
+                <div class="pose-chip" id="yawChip" title="Yaw: Left/Right turn (Threshold ±20°)">
+                  <span class="pose-chip-axis">Y</span>
+                  <span class="pose-chip-val" id="yawVal">--</span>
+                </div>
+              </div>
+              <div class="pose-limits-hint">Limits: P ±5° · R ±10° · Y ±20°</div>
             </div>
             <div class="card">
               <div class="label">Risk Level</div>
@@ -142,7 +181,7 @@
             </div>
           </div>
 
-          <!-- Pro Live Camera Vision Panel -->
+          <!-- Pro Live Camera Vision Panel with 3D Axis Follow Canvas -->
           <div class="panel camera-panel">
             <div class="panel-header">
               <div class="camera-title-wrap">
@@ -154,12 +193,15 @@
             <div class="camera-feed-container" id="cameraFeedContainer">
               <img id="cameraStreamImg" src="http://172.20.10.3:81/stream" alt="ESP32-S3 Camera Stream" />
               <video id="browserWebcamVideo" autoplay playsinline muted style="display:none;"></video>
+              <!-- 3D Head Orientation Axis Follow Canvas Overlay -->
+              <canvas id="cameraPoseCanvas" class="camera-pose-canvas"></canvas>
               <div id="camFallbackOverlay" class="cam-fallback-overlay" style="display:none;">
                 <p>⚠️ Camera Feed Standby / Disconnected</p>
                 <small>Ensure ESP32-S3 is powered on or switch to Browser Webcam below.</small>
               </div>
               <!-- Video Overlay Actions -->
               <div class="camera-overlay-actions">
+                <button id="camAxesToggleBtn" class="cam-action-btn active" title="Toggle 3D Head Orientation Axes Follow">📐 3D Axes</button>
                 <button id="camMirrorBtn" class="cam-action-btn" title="Mirror Video">🪞 Mirror</button>
                 <button id="camSnapshotBtn" class="cam-action-btn" title="Take Snapshot">📸 Snapshot</button>
                 <button id="camFullscreenBtn" class="cam-action-btn" title="Fullscreen">⛶ Fullscreen</button>
@@ -169,6 +211,7 @@
               <input type="text" id="streamUrlInput" placeholder="http://172.20.10.3:81/stream" value="http://172.20.10.3:81/stream" />
               <button id="connectCamBtn" class="focus-btn primary">Connect ESP32 Cam</button>
               <button id="toggleWebcamBtn" class="focus-btn">Use Browser Webcam</button>
+              <button id="camCalibrateBtn" class="focus-btn calib-accent-btn" title="Set current head pose as zero reference (0,0,0)">🎯 Calibrate (0,0,0)</button>
               <button id="stopCamBtn" class="focus-btn danger">⏹ Stop Stream</button>
             </div>
           </div>

@@ -24,9 +24,12 @@ def analyze_warning(reading: dict) -> dict:
     rules = processing.get_rules()
     system_prompt = rules["llm_prompt"]["system"]
     user_prompt = processing.build_llm_user_prompt(
-        distance_cm=reading["distance_cm"],
-        brightness_lux=reading["brightness_lux"],
+        distance_cm=reading["distance_cm"] or 50.0,
+        brightness_lux=reading["brightness_lux"] or 400.0,
         sitting_minutes=reading.get("sitting_minutes", 0),
+        head_pitch=reading.get("head_pitch_deg"),
+        head_roll=reading.get("head_roll_deg"),
+        head_yaw=reading.get("head_yaw_deg"),
     )
 
     if config.OPENROUTER_API_KEY:

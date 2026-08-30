@@ -154,19 +154,47 @@ def push_advice(advice: dict, reading: dict) -> str:
     return _rest_post(config.FIREBASE_ADVICE_PATH, payload)
 
 
-def push_calibration_request(calib_type: str = "pose") -> bool:
+def trigger_head_pose_calibration() -> bool:
+    """Send calibration request to Firebase RTDB (/ai_data/calibrate_pose_req and /ai_data/calibrate_req)."""
     global _use_rest_fallback
-    path = "ai_data/calibrate_dist_req" if calib_type == "distance" else "ai_data/calibrate_pose_req"
-    timestamp = datetime.now(timezone.utc).isoformat()
+    req_timestamp = datetime.now(timezone.utc).isoformat()
     if not _use_rest_fallback:
         try:
-            ref = get_ref(path)
+            ref_pose = get_ref("ai_data/calibrate_pose_req")
+            if ref_pose:
+                ref_pose.set(req_timestamp)
+            ref_req = get_ref("ai_data/calibrate_req")
+            if ref_req:
+                ref_req.set(req_timestamp)
+            return True
+        except Exception:
+            _use_rest_fallback = True
+    _rest_put("ai_data/calibrate_pose_req", req_timestamp)
+    return _rest_put("ai_data/calibrate_req", req_timestamp)
+
+
+def trigger_distance_calibration(distance_cm: float = 50.0) -> bool:
+    """Send distance calibration request to Firebase RTDB (/ai_data/calibrate_dist_req)."""
+    global _use_rest_fallback
+    payload = {
+        "known_distance_cm": float(distance_cm),
+        "req_time": datetime.now(timezone.utc).isoformat(),
+    }
+    if not _use_rest_fallback:
+        try:
+            ref = get_ref("ai_data/calibrate_dist_req")
             if ref:
-                ref.set(timestamp)
+                ref.set(payload)
                 return True
         except Exception:
             _use_rest_fallback = True
-    return _rest_put(path, timestamp)
+    return _rest_put("ai_data/calibrate_dist_req", payload)
+
+
+def push_calibration_request(calib_type: str = "pose") -> bool:
+    if calib_type == "distance":
+        return trigger_distance_calibration(50.0)
+    return trigger_head_pose_calibration()
 
 
 def reset_ai_data() -> bool:
@@ -180,4 +208,3 @@ def reset_ai_data() -> bool:
         except Exception:
             _use_rest_fallback = True
     return _rest_put("ai_data", {})
-
