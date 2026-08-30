@@ -13,18 +13,21 @@ import urllib.request
 
 class FirebaseSyncWorker:
     """Non-blocking background worker to sync AI tracking metrics & warnings to Firebase RTDB."""
-    def __init__(self, database_url="https://gpbl-iot-llms-default-rtdb.asia-southeast1.firebasedatabase.app", on_calibrate=None):
+    def __init__(self, database_url="https://gpbl-iot-llms-default-rtdb.asia-southeast1.firebasedatabase.app", on_calibrate=None, on_calibrate_pose=None, on_calibrate_dist=None):
         self.url = database_url.rstrip("/") + "/ai_data.json"
         self.latest_data = None
         self.lock = threading.Lock()
         self.running = True
         self.on_calibrate = on_calibrate
-        self.last_calib_req = None
+        self.on_calibrate_pose = on_calibrate_pose
+        self.on_calibrate_dist = on_calibrate_dist
+        self.last_pose_req = None
+        self.last_dist_req = None
         self.calib_check_counter = 0
         self.thread = threading.Thread(target=self._worker_loop, daemon=True)
         self.thread.start()
 
-    def update_state(self, pitch, roll, yaw, dist_cm, ear, blinks, warnings=None, posture_status="GOOD", nose_x=0.5, nose_y=0.55):
+    def update_state(self, pitch, roll, yaw, dist_cm, ear, blinks, warnings=None, posture_status="GOOD", nose_x=0.5, nose_y=0.55, blink_rate_bpm=0.0):
         data = {
             "pitch": round(float(pitch), 2) if pitch is not None else 0.0,
             "roll": round(float(roll), 2) if roll is not None else 0.0,
@@ -33,7 +36,8 @@ class FirebaseSyncWorker:
             "ai_distance_cm": round(float(dist_cm), 1) if dist_cm is not None else 0.0,
             "ear": round(float(ear), 3) if ear is not None else 0.0,
             "blinks": int(blinks),
-            "blink_rate": int(blinks),
+            "blink_rate": round(float(blink_rate_bpm), 1),
+            "blink_rate_bpm": round(float(blink_rate_bpm), 1),
             "head_pitch": round(float(pitch), 2) if pitch is not None else 0.0,
             "head_roll": round(float(roll), 2) if roll is not None else 0.0,
             "head_yaw": round(float(yaw), 2) if yaw is not None else 0.0,
@@ -80,19 +84,33 @@ class FirebaseSyncWorker:
                 except Exception:
                     pass
 
-            # Periodically check for calibration requests from web UI (~every 1.5s)
+            # Check calibration requests from web UI (~every 1.5s)
             self.calib_check_counter += 1
-            if self.calib_check_counter >= 10 and self.on_calibrate:
+            if self.calib_check_counter >= 10:
                 self.calib_check_counter = 0
-                try:
-                    calib_url = self.url.replace(".json", "/calibrate_req.json")
-                    with urllib.request.urlopen(calib_url, timeout=0.8) as resp:
-                        calib_val = json.loads(resp.read().decode('utf-8'))
-                        if calib_val is not None and calib_val != self.last_calib_req:
-                            self.last_calib_req = calib_val
-                            self.on_calibrate()
-                except Exception:
-                    pass
+                if self.on_calibrate_pose or self.on_calibrate:
+                    try:
+                        calib_url = self.url.replace(".json", "/calibrate_pose_req.json")
+                        with urllib.request.urlopen(calib_url, timeout=0.8) as resp:
+                            calib_val = json.loads(resp.read().decode('utf-8'))
+                            if calib_val is not None and calib_val != self.last_pose_req:
+                                self.last_pose_req = calib_val
+                                fn = self.on_calibrate_pose or self.on_calibrate
+                                fn()
+                                print("🎯 [WEB CALIBRATE] Head Pose Calibrated via Web Dashboard!")
+                    except Exception:
+                        pass
+                if self.on_calibrate_dist:
+                    try:
+                        calib_url = self.url.replace(".json", "/calibrate_dist_req.json")
+                        with urllib.request.urlopen(calib_url, timeout=0.8) as resp:
+                            calib_val = json.loads(resp.read().decode('utf-8'))
+                            if calib_val is not None and calib_val != self.last_dist_req:
+                                self.last_dist_req = calib_val
+                                self.on_calibrate_dist(50.0)
+                                print("🎯 [WEB CALIBRATE] Distance Calibrated (50cm) via Web Dashboard!")
+                    except Exception:
+                        pass
 
             time.sleep(0.15)  # ~6-7 Hz update rate for smooth UI sync
 
@@ -148,7 +166,10 @@ class BlinkCounterandEARPlot:
         self.filtered_roll = None
 
         # Real-time Firebase Sync Worker
-        self.firebase_sync = FirebaseSyncWorker(on_calibrate=self.calibrate_head_pose)
+        self.firebase_sync = FirebaseSyncWorker(
+            on_calibrate_pose=self.calibrate_head_pose,
+            on_calibrate_dist=self.calibrate_distance
+        )
 
         # 3D Head Model Points for Head Pose Estimation (solvePnP)
         self.model_points_3d = np.array([
@@ -583,6 +604,11 @@ class BlinkCounterandEARPlot:
         norm_nose_x = nose_pt[0] / fw if fw > 0 else 0.5
         norm_nose_y = nose_pt[1] / fh if fh > 0 else 0.55
 
+        if not hasattr(self, 'start_time') or self.start_time is None:
+            self.start_time = time.time()
+        elapsed_min = max((time.time() - self.start_time) / 60.0, 0.05)
+        calc_bpm = round(self.blink_counter / elapsed_min, 1)
+
         # Sync to Firebase RTDB in background thread
         if hasattr(self, 'firebase_sync'):
             self.firebase_sync.update_state(
@@ -595,7 +621,8 @@ class BlinkCounterandEARPlot:
                 warnings=active_warnings,
                 posture_status=posture_status,
                 nose_x=norm_nose_x,
-                nose_y=norm_nose_y
+                nose_y=norm_nose_y,
+                blink_rate_bpm=calc_bpm
             )
 
     def process_video(self):
@@ -655,7 +682,11 @@ class BlinkCounterandEARPlot:
             print("Press 'c' to Calibrate Distance (sit 50cm from camera)")
             print("Press 'h' to Calibrate Head Pose (current angle becomes 0, 0, 0)")
             print("Press 'p' to Quit\n")
-            cv.namedWindow("Video with EAR Plot & Pose Estimator", cv.WINDOW_NORMAL)
+            if getattr(self, 'show_gui', True):
+                try:
+                    cv.namedWindow("Video with EAR Plot & Pose Estimator", cv.WINDOW_NORMAL)
+                except Exception:
+                    pass
 
             self._process_video_frames(cap)
             
@@ -666,7 +697,11 @@ class BlinkCounterandEARPlot:
                 cap.release()
             if self.out:
                 self.out.release()
-            cv.destroyAllWindows()
+            if getattr(self, 'show_gui', True):
+                try:
+                    cv.destroyAllWindows()
+                except Exception:
+                    pass
 
     def _process_video_frames(self, cap):
         """Process individual frames from video capture."""
@@ -686,14 +721,17 @@ class BlinkCounterandEARPlot:
                 self._update_blink_detection(ear)
                 self._update_visualization(frame, ear, is_live_stream)
 
-            wait_time = 1 if is_live_stream else 30
-            key = cv.waitKey(wait_time) & 0xFF
-            if key == ord('p'):
-                break
-            elif key == ord('c'):
-                self.calibrate_distance(known_distance_cm=50.0)
-            elif key == ord('h'):
-                self.calibrate_head_pose()
+            if getattr(self, 'show_gui', True):
+                wait_time = 1 if is_live_stream else 30
+                key = cv.waitKey(wait_time) & 0xFF
+                if key == ord('p'):
+                    break
+                elif key == ord('c'):
+                    self.calibrate_distance(known_distance_cm=50.0)
+                elif key == ord('h'):
+                    self.calibrate_head_pose()
+            else:
+                time.sleep(0.01)
 
     def _update_blink_detection(self, ear):
         """Update blink detection based on EAR value."""
@@ -742,14 +780,18 @@ class BlinkCounterandEARPlot:
         if self.save_video:
             self.out.write(stacked_frame)
 
-        display_frame = cv.resize(
-            stacked_frame,
-            None,
-            fx=self.display_scale,
-            fy=self.display_scale,
-            interpolation=cv.INTER_LINEAR
-        )
-        cv.imshow("Video with EAR Plot & Pose Estimator", display_frame)
+        if getattr(self, 'show_gui', True):
+            try:
+                display_frame = cv.resize(
+                    stacked_frame,
+                    None,
+                    fx=self.display_scale,
+                    fy=self.display_scale,
+                    interpolation=cv.INTER_LINEAR
+                )
+                cv.imshow("Video with EAR Plot & Pose Estimator", display_frame)
+            except Exception:
+                pass
 
     def plot_to_image(self):
         """Convert the matplotlib plot to an OpenCV-compatible image."""
@@ -762,22 +804,26 @@ class BlinkCounterandEARPlot:
 if __name__ == "__main__":
     import sys
     input_video_path = "http://172.20.10.3:81/stream"
-    if len(sys.argv) > 1:
-        arg = sys.argv[1]
-        if arg.isdigit():
-            input_video_path = int(arg)
-        elif arg.lower() in ("0", "webcam", "cam"):
-            input_video_path = 0
-        else:
-            input_video_path = arg
+    show_gui = True
 
-    print(f"🚀 Starting PostureCare AI Tracking with video source: {input_video_path}")
+    for a in sys.argv[1:]:
+        if a in ("--no-gui", "--headless"):
+            show_gui = False
+        elif a.isdigit():
+            input_video_path = int(a)
+        elif a.lower() in ("0", "webcam", "cam"):
+            input_video_path = 0
+        elif not a.startswith("--"):
+            input_video_path = a
+
+    print(f"🚀 Starting PostureCare AI Tracking with video source: {input_video_path} (GUI: {show_gui})")
     blink_counter = BlinkCounterandEARPlot(
         video_path=input_video_path,
         threshold=0.294,
         consec_frames=3,
         save_video=False
     )
+    blink_counter.show_gui = show_gui
     blink_counter.process_video()
 
 

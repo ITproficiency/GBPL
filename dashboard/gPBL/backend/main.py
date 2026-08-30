@@ -10,11 +10,14 @@ import poller
 from routers import api
 
 
+import tracking_manager
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     task = asyncio.create_task(poller.run_poller())
     yield
     task.cancel()
+    tracking_manager.stop_tracking()
 
 
 app = FastAPI(

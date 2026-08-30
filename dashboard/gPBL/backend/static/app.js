@@ -376,17 +376,60 @@ if (cameraStreamImg) {
   };
 }
 
+function resetTrackingState() {
+  chartPoints.length = 0;
+  if (els.distance) els.distance.textContent = "--";
+  if (els.earValue) els.earValue.textContent = "--";
+  if (els.blinks) els.blinks.textContent = "0";
+  if (els.blinkRate) els.blinkRate.textContent = "0";
+  if (els.headPose) els.headPose.textContent = "--";
+  if (els.riskLevel) {
+    els.riskLevel.textContent = "NORMAL";
+    els.riskLevel.className = "value risk-normal";
+  }
+  if (els.headerRiskPill) {
+    els.headerRiskPill.textContent = "NORMAL";
+    els.headerRiskPill.className = "risk-pill risk-normal";
+  }
+  if (els.alertList) {
+    els.alertList.innerHTML = '<li class="empty">All readings within PostureCare targets</li>';
+  }
+  if (typeof ocularChart !== "undefined") {
+    ocularChart.data.labels = [];
+    ocularChart.data.datasets[0].data = [];
+    ocularChart.data.datasets[1].data = [];
+    ocularChart.update("none");
+  }
+  if (typeof distanceChart !== "undefined") {
+    distanceChart.data.labels = [];
+    distanceChart.data.datasets[0].data = [];
+    distanceChart.data.datasets[1].data = [];
+    distanceChart.update("none");
+  }
+}
+
 if (connectCamBtn) {
-  connectCamBtn.addEventListener("click", () => {
+  connectCamBtn.addEventListener("click", async () => {
     if (isBrowserWebcamActive) stopBrowserWebcam();
-    const url = streamUrlInput ? streamUrlInput.value.trim() : "";
+    resetTrackingState();
+    const url = streamUrlInput ? streamUrlInput.value.trim() : "http://172.20.10.3:81/stream";
     if (url && cameraStreamImg) {
       cameraStreamImg.style.display = "block";
       cameraStreamImg.src = url;
       if (camFallbackOverlay) camFallbackOverlay.style.display = "none";
       if (cameraStatus) {
-        cameraStatus.textContent = "CONNECTING...";
-        cameraStatus.style.color = "#f59e0b";
+        cameraStatus.textContent = "ESP32 STREAM";
+        cameraStatus.style.color = "#60a5fa";
+      }
+      try {
+        await fetch("/api/tracking/stop", { method: "POST" });
+        await fetch("/api/tracking/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ source: url }),
+        });
+      } catch (e) {
+        console.error("Failed to start tracking:", e);
       }
     }
   });
@@ -403,6 +446,8 @@ function stopBrowserWebcam() {
 
 if (toggleWebcamBtn) {
   toggleWebcamBtn.addEventListener("click", async () => {
+    resetTrackingState();
+    try { await fetch("/api/tracking/stop", { method: "POST" }); } catch (e) {}
     if (isBrowserWebcamActive) {
       stopBrowserWebcam();
       if (cameraStreamImg) cameraStreamImg.style.display = "block";
@@ -411,6 +456,15 @@ if (toggleWebcamBtn) {
         cameraStatus.textContent = "ESP32 STREAM";
         cameraStatus.style.color = "#60a5fa";
       }
+      // Restart tracking with ESP32 stream
+      const url = streamUrlInput ? streamUrlInput.value.trim() : "http://172.20.10.3:81/stream";
+      try {
+        await fetch("/api/tracking/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ source: url }),
+        });
+      } catch (e) {}
     } else {
       try {
         webcamStream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -426,6 +480,12 @@ if (toggleWebcamBtn) {
           cameraStatus.textContent = "BROWSER WEBCAM";
           cameraStatus.style.color = "#34d399";
         }
+        // Start Python AI Tracking process for Browser Webcam (source 0)
+        await fetch("/api/tracking/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ source: "0" }),
+        });
       } catch (err) {
         alert("Could not access browser webcam: " + err.message);
       }
@@ -435,8 +495,9 @@ if (toggleWebcamBtn) {
 
 const stopCamBtn = document.getElementById("stopCamBtn");
 if (stopCamBtn) {
-  stopCamBtn.addEventListener("click", () => {
+  stopCamBtn.addEventListener("click", async () => {
     stopBrowserWebcam();
+    resetTrackingState();
     if (cameraStreamImg) {
       cameraStreamImg.src = "";
       cameraStreamImg.style.display = "none";
@@ -447,6 +508,8 @@ if (stopCamBtn) {
       cameraStatus.style.color = "#f87171";
     }
     if (toggleWebcamBtn) toggleWebcamBtn.textContent = "Use Browser Webcam";
+    // Stop Python AI Tracking process
+    try { await fetch("/api/tracking/stop", { method: "POST" }); } catch (e) {}
   });
 }
 

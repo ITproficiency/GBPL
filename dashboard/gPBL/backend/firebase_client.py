@@ -152,3 +152,32 @@ def push_advice(advice: dict, reading: dict) -> str:
         except Exception:
             _use_rest_fallback = True
     return _rest_post(config.FIREBASE_ADVICE_PATH, payload)
+
+
+def push_calibration_request(calib_type: str = "pose") -> bool:
+    global _use_rest_fallback
+    path = "ai_data/calibrate_dist_req" if calib_type == "distance" else "ai_data/calibrate_pose_req"
+    timestamp = datetime.now(timezone.utc).isoformat()
+    if not _use_rest_fallback:
+        try:
+            ref = get_ref(path)
+            if ref:
+                ref.set(timestamp)
+                return True
+        except Exception:
+            _use_rest_fallback = True
+    return _rest_put(path, timestamp)
+
+
+def reset_ai_data() -> bool:
+    global _use_rest_fallback
+    if not _use_rest_fallback:
+        try:
+            ref = get_ref("ai_data")
+            if ref:
+                ref.delete()
+                return True
+        except Exception:
+            _use_rest_fallback = True
+    return _rest_put("ai_data", {})
+

@@ -167,3 +167,28 @@ def create_insight(window_minutes: Optional[int] = None):
 @router.get("/insights")
 def get_insights(limit: int = 5):
     return {"items": history_store.get_recent_insights(config.DEFAULT_DEVICE_ID, limit=limit)}
+
+
+import tracking_manager
+
+
+class TrackingStartRequest(BaseModel):
+    source: str = "0"
+
+
+@router.post("/tracking/start")
+def start_tracking_api(req: TrackingStartRequest):
+    """Launch the Python AI tracking process for the specified camera source when user starts camera on Web UI."""
+    success = tracking_manager.start_tracking(source=req.source)
+    return {
+        "status": "ok" if success else "error",
+        "active": tracking_manager.is_tracking_active(),
+        "source": req.source,
+    }
+
+
+@router.post("/tracking/stop")
+def stop_tracking_api():
+    """Stop the active Python AI tracking process when user stops camera on Web UI."""
+    tracking_manager.stop_tracking()
+    return {"status": "ok", "active": False}

@@ -143,23 +143,26 @@ def process_reading(raw: Any, default_device_id: str = "esp32_001") -> dict | No
     brightness_lux, light_adc = resolve_brightness_lux(raw, rules)
 
     has_brightness = light_adc is not None or extract_float(raw, fields["brightness"]) is not None
-    ear = extract_float(raw, fields.get("ear", ["ear"]))
-    blinks = extract_float(raw, fields.get("blinks", ["blinks"]))
-    raw_warnings = raw.get("warnings") if isinstance(raw.get("warnings"), list) else []
+    import tracking_manager
+    tracking_active = tracking_manager.is_tracking_active()
 
-    cam_dist = extract_float(raw, fields.get("camera_distance", ["camera_distance_cm", "camera_distance", "ai_distance_cm"]))
+    cam_dist = extract_float(raw, fields.get("camera_distance", ["camera_distance_cm", "camera_distance", "ai_distance_cm"])) if tracking_active else None
     ultra_dist = extract_float(raw, fields.get("ultrasonic_distance", ["ultrasonic_distance_cm", "ultrasonic_distance", "distance_cm", "distance"]))
     
     active_distance = cam_dist if cam_dist is not None else ultra_dist
-    distance_cm = active_distance if active_distance is not None else 0.0
+    distance_cm = active_distance if active_distance is not None else (ultra_dist if ultra_dist is not None else 0.0)
     sitting_minutes = track_sitting_minutes(active_distance, rules)
-    blink_rate_bpm = extract_float(raw, fields.get("blink_rate", ["blink_rate"]))
-    head_pitch = extract_float(raw, fields.get("head_pitch", ["head_pitch"]))
-    head_roll = extract_float(raw, fields.get("head_roll", ["head_roll"]))
-    head_yaw = extract_float(raw, fields.get("head_yaw", ["head_yaw"]))
+
+    ear = extract_float(raw, fields.get("ear", ["ear"])) if tracking_active else None
+    blinks = extract_float(raw, fields.get("blinks", ["blinks"])) if tracking_active else None
+    blink_rate_bpm = extract_float(raw, fields.get("blink_rate", ["blink_rate"])) if tracking_active else None
+    head_pitch = extract_float(raw, fields.get("head_pitch", ["head_pitch"])) if tracking_active else None
+    head_roll = extract_float(raw, fields.get("head_roll", ["head_roll"])) if tracking_active else None
+    head_yaw = extract_float(raw, fields.get("head_yaw", ["head_yaw"])) if tracking_active else None
+    raw_warnings = raw.get("warnings") if (tracking_active and isinstance(raw.get("warnings"), list)) else []
 
     risk = evaluate_risk(distance_cm, brightness_lux, sitting_minutes)
-    extended_events = detectors.run_extended_events(blink_rate_bpm, head_pitch, head_roll, head_yaw, rules)
+    extended_events = detectors.run_extended_events(blink_rate_bpm, head_pitch, head_roll, head_yaw, rules) if tracking_active else []
 
     # Merge AI tracking warnings & escalate risk level if active warnings exist
     all_warnings = [w for w in raw_warnings if isinstance(w, str) and w.strip()]
