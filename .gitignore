@@ -6,4 +6,10 @@
 
 # Secrets
 *serviceAccountKey.json
-*.env
+*.env
+
+# Environment & System
+myenv/
+.DS_Store
+*.pyc
+__pycache__/

@@ -23,4 +23,16 @@ bool init_firebase();
  */
 void upload_sensor_data_to_firebase(int light_adc, float lux, float distance);
 
+/**
+ * Ensure the `led_state` schema exists in the Realtime Database.
+ * Creates an object with `red` and `green` keys if missing.
+ */
+void ensure_led_schema();
+
+/**
+ * Read `/led_state/red` from Firebase and apply it to the red alert LED.
+ * This function only controls the red alert LED; the green LED remains off.
+ */
+void apply_led_state_from_firebase();
+
 #endif // FIREBASE_MANAGER_H_

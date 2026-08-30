@@ -1,6 +1,7 @@
 #include "firebase_manager.h"
 #include <addons/TokenHelper.h>
 #include <addons/RTDBHelper.h>
+#include "sensor_manager.h"
 
 // Firebase control objects
 static FirebaseData fbdo;
@@ -55,5 +56,44 @@ void upload_sensor_data_to_firebase(int light_adc, float lux, float distance) {
         } else {
             Serial.printf("[Firebase] Upload distance ERROR: %s\n", fbdo.errorReason().c_str());
         }
+    }
+}
+
+void ensure_led_schema() {
+    if (!Firebase.ready()) {
+        return;
+    }
+
+    // Check if led_state exists
+    if (Firebase.RTDB.getJSON(&fbdo, "/led_state")) {
+        Serial.println("[Firebase] /led_state exists");
+        return;
+    }
+
+    // Create default schema with both LEDs off (but firmware will only use red)
+    FirebaseJson json;
+    json.set("red", false);
+    json.set("green", false);
+
+    if (Firebase.RTDB.setJSON(&fbdo, "/led_state", &json)) {
+        Serial.println("[Firebase] Created /led_state schema");
+    } else {
+        Serial.printf("[Firebase] Failed to create /led_state: %s\n", fbdo.errorReason().c_str());
+    }
+}
+
+void apply_led_state_from_firebase() {
+    if (!Firebase.ready()) {
+        return;
+    }
+
+    // Only read the red state and apply it. Keep green LED off.
+    if (Firebase.RTDB.getBool(&fbdo, "/led_state/red")) {
+        bool redState = fbdo.to<bool>();
+        digitalWrite(LED_RED, redState ? HIGH : LOW);
+        digitalWrite(GREEN_LED, LOW);
+        Serial.printf("[Firebase] Applied led_state/red = %s\n", redState ? "ON" : "OFF");
+    } else {
+        Serial.printf("[Firebase] Failed to read /led_state/red: %s\n", fbdo.errorReason().c_str());
     }
 }
