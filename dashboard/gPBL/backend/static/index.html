@@ -92,6 +92,26 @@
             </div>
           </div>
 
+          <div class="panel camera-panel">
+            <div class="panel-header">
+              <h2>📷 Live Camera Feed</h2>
+              <div class="camera-status-pill" id="cameraStatus">ESP32 STREAM</div>
+            </div>
+            <div class="camera-feed-container" id="cameraFeedContainer">
+              <img id="cameraStreamImg" src="http://172.20.10.3:81/stream" alt="ESP32-S3 Camera Stream" />
+              <video id="browserWebcamVideo" autoplay playsinline muted style="display:none;"></video>
+              <div id="camFallbackOverlay" class="cam-fallback-overlay" style="display:none;">
+                <p>⚠️ Stream disconnected</p>
+                <small>Ensure ESP32-S3 is powered on or switch to Browser Webcam below.</small>
+              </div>
+            </div>
+            <div class="camera-controls">
+              <input type="text" id="streamUrlInput" placeholder="http://172.20.10.3:81/stream" value="http://172.20.10.3:81/stream" />
+              <button id="connectCamBtn" class="focus-btn primary">Connect ESP32 Cam</button>
+              <button id="toggleWebcamBtn" class="focus-btn">Use Browser Webcam</button>
+            </div>
+          </div>
+
           <div class="panel">
             <h2>Live Chart (session)</h2>
             <div class="chart-wrap"><canvas id="sensorChart"></canvas></div>

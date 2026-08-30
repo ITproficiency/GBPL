@@ -272,3 +272,90 @@ async function refresh() {
 fetchRules();
 refresh();
 setInterval(refresh, POLL_MS);
+
+/* ---------------- Live Camera Stream Controls ---------------- */
+const cameraStreamImg = document.getElementById("cameraStreamImg");
+const browserWebcamVideo = document.getElementById("browserWebcamVideo");
+const camFallbackOverlay = document.getElementById("camFallbackOverlay");
+const streamUrlInput = document.getElementById("streamUrlInput");
+const connectCamBtn = document.getElementById("connectCamBtn");
+const toggleWebcamBtn = document.getElementById("toggleWebcamBtn");
+const cameraStatus = document.getElementById("cameraStatus");
+let isBrowserWebcamActive = false;
+let webcamStream = null;
+
+if (cameraStreamImg) {
+  cameraStreamImg.onerror = () => {
+    if (!isBrowserWebcamActive && camFallbackOverlay) {
+      camFallbackOverlay.style.display = "flex";
+      if (cameraStatus) {
+        cameraStatus.textContent = "OFFLINE";
+        cameraStatus.style.color = "#f87171";
+      }
+    }
+  };
+  cameraStreamImg.onload = () => {
+    if (camFallbackOverlay) camFallbackOverlay.style.display = "none";
+    if (cameraStatus) {
+      cameraStatus.textContent = "ESP32 STREAM";
+      cameraStatus.style.color = "#60a5fa";
+    }
+  };
+}
+
+if (connectCamBtn) {
+  connectCamBtn.addEventListener("click", () => {
+    if (isBrowserWebcamActive) stopBrowserWebcam();
+    const url = streamUrlInput ? streamUrlInput.value.trim() : "";
+    if (url && cameraStreamImg) {
+      cameraStreamImg.style.display = "block";
+      cameraStreamImg.src = url;
+      if (camFallbackOverlay) camFallbackOverlay.style.display = "none";
+      if (cameraStatus) {
+        cameraStatus.textContent = "CONNECTING...";
+        cameraStatus.style.color = "#f59e0b";
+      }
+    }
+  });
+}
+
+function stopBrowserWebcam() {
+  if (webcamStream) {
+    webcamStream.getTracks().forEach((t) => t.stop());
+    webcamStream = null;
+  }
+  if (browserWebcamVideo) browserWebcamVideo.style.display = "none";
+  isBrowserWebcamActive = false;
+}
+
+if (toggleWebcamBtn) {
+  toggleWebcamBtn.addEventListener("click", async () => {
+    if (isBrowserWebcamActive) {
+      stopBrowserWebcam();
+      if (cameraStreamImg) cameraStreamImg.style.display = "block";
+      toggleWebcamBtn.textContent = "Use Browser Webcam";
+      if (cameraStatus) {
+        cameraStatus.textContent = "ESP32 STREAM";
+        cameraStatus.style.color = "#60a5fa";
+      }
+    } else {
+      try {
+        webcamStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        if (browserWebcamVideo) {
+          browserWebcamVideo.srcObject = webcamStream;
+          browserWebcamVideo.style.display = "block";
+        }
+        if (cameraStreamImg) cameraStreamImg.style.display = "none";
+        if (camFallbackOverlay) camFallbackOverlay.style.display = "none";
+        isBrowserWebcamActive = true;
+        toggleWebcamBtn.textContent = "Switch to ESP32 Stream";
+        if (cameraStatus) {
+          cameraStatus.textContent = "BROWSER WEBCAM";
+          cameraStatus.style.color = "#34d399";
+        }
+      } catch (err) {
+        alert("Could not access browser webcam: " + err.message);
+      }
+    }
+  });
+}
