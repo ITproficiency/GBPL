@@ -40,6 +40,15 @@ async def _poll_once() -> None:
     _last_ts = reading["timestamp"]
     history_store.insert_reading(reading)
 
+    # Auto-generate & push AI advice when posture risk is elevated
+    if reading.get("llm_eligible", False):
+        try:
+            import llm_service
+            advice = llm_service.analyze_warning(reading)
+            await asyncio.to_thread(firebase_client.push_advice, advice, reading)
+        except Exception as err:
+            logger.warning("Auto AI advice push failed: %s", err)
+
 
 async def run_poller() -> None:
     while True:

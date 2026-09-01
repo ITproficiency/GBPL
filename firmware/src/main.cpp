@@ -12,8 +12,8 @@
 // ===========================
 // Enter your WiFi credentials
 // ===========================
-const char* ssid = "tony";
-const char* password = "00000000";
+const char* ssid = "Toantham";
+const char* password = "hoilamgi1";
 
 void startCameraServer();
 void setupLedFlash(int pin);
@@ -101,8 +101,10 @@ void setup() {
 #endif
 
   // Connect to WiFi
-  WiFi.begin(ssid, password);
   WiFi.setSleep(false);
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(true);
+  WiFi.begin(ssid, password);
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -122,6 +124,14 @@ void setup() {
 }
 
 void loop() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[WiFi] Disconnected. Reconnecting...");
+    WiFi.disconnect();
+    WiFi.begin(ssid, password);
+    delay(2000);
+    return;
+  }
+
   // Read sensor data (LDR and Ultrasonic)
   int lightADC = read_light_adc();
   float lux = read_lux();

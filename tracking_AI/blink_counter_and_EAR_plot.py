@@ -1,14 +1,73 @@
+import os
+os.environ["GLOG_minloglevel"] = "3"
+import warnings
+warnings.filterwarnings("ignore")
+
 import numpy as np
 import cv2 as cv
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from FaceMeshModule import FaceMeshGenerator
 from utils import DrawingUtils, ThreadedVideoStream
-import os
 import threading
 import time
 import json
+import ssl
 import urllib.request
+import http.server
+import socketserver
+
+_latest_frame_lock = threading.Lock()
+
+# Create default connecting placeholder JPEG to prevent HTTP stream timeouts
+try:
+    _placeholder_img = np.zeros((480, 640, 3), dtype=np.uint8)
+    cv.putText(_placeholder_img, "CONNECTING TO CAMERA...", (140, 240),
+               cv.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2, cv.LINE_AA)
+    _, _placeholder_buf = cv.imencode('.jpg', _placeholder_img)
+    _latest_jpeg_bytes = _placeholder_buf.tobytes()
+except Exception:
+    _latest_jpeg_bytes = None
+
+class MJPEGStreamHandler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path in ['/stream', '/video_feed', '/']:
+            self.send_response(200)
+            self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=frame')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            try:
+                while True:
+                    with _latest_frame_lock:
+                        frame_bytes = _latest_jpeg_bytes
+                    if frame_bytes is not None:
+                        self.wfile.write(b'--frame\r\n')
+                        self.wfile.write(b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+                    time.sleep(0.04)
+            except Exception:
+                pass
+        else:
+            self.send_error(404)
+
+    def log_message(self, format, *args):
+        pass  # Suppress HTTP access logs
+
+def start_mjpeg_server(port=8089):
+    default_port = port
+    for p in [default_port, default_port + 1, default_port + 2]:
+        try:
+            class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+                daemon_threads = True
+                allow_reuse_address = True
+
+            server = ThreadedHTTPServer(('0.0.0.0', p), MJPEGStreamHandler)
+            t = threading.Thread(target=server.serve_forever, daemon=True)
+            t.start()
+            print(f"📡 [MJPEG STREAM SERVER] Relaying AI video feed at http://127.0.0.1:{p}/stream")
+            return p
+        except Exception as e:
+            print(f"⚠️ Port {p} busy, trying next port...")
+    print("❌ Could not bind MJPEG stream server to any port")
 
 
 class FirebaseSyncWorker:
@@ -60,6 +119,7 @@ class FirebaseSyncWorker:
     def _worker_loop(self):
         last_sent = None
         sensor_url = self.url.replace("ai_data.json", "sensor_data.json")
+        ctx = ssl._create_unverified_context()
         while self.running:
             data_to_send = None
             with self.lock:
@@ -76,7 +136,7 @@ class FirebaseSyncWorker:
                         method='PATCH',
                         headers={'Content-Type': 'application/json; charset=utf-8'}
                     )
-                    with urllib.request.urlopen(req1, timeout=1.0) as res:
+                    with urllib.request.urlopen(req1, timeout=1.5, context=ctx) as res:
                         pass
                     # Update /sensor_data.json so poller & dashboard pick up AI metrics
                     req2 = urllib.request.Request(
@@ -85,11 +145,11 @@ class FirebaseSyncWorker:
                         method='PATCH',
                         headers={'Content-Type': 'application/json; charset=utf-8'}
                     )
-                    with urllib.request.urlopen(req2, timeout=1.0) as res:
+                    with urllib.request.urlopen(req2, timeout=1.5, context=ctx) as res:
                         pass
                     last_sent = data_to_send
-                except Exception:
-                    pass
+                except Exception as sync_err:
+                    print(f"⚠️ [FIREBASE SYNC ERROR] {sync_err}")
 
             # Periodically check for calibration requests from web UI (~every 0.45s)
             self.calib_check_counter += 1
@@ -98,7 +158,7 @@ class FirebaseSyncWorker:
                 if self.on_calibrate_pose or self.on_calibrate:
                     try:
                         calib_url = self.url.replace(".json", "/calibrate_pose_req.json")
-                        with urllib.request.urlopen(calib_url, timeout=0.8) as resp:
+                        with urllib.request.urlopen(calib_url, timeout=0.8, context=ctx) as resp:
                             calib_val = json.loads(resp.read().decode('utf-8'))
                             if calib_val is not None and calib_val != self.last_pose_req:
                                 self.last_pose_req = calib_val
@@ -177,6 +237,7 @@ class BlinkCounterandEARPlot:
             on_calibrate_pose=self.calibrate_head_pose,
             on_calibrate_dist=self.calibrate_distance
         )
+        start_mjpeg_server(port=8089)
 
         # 3D Head Model Points for Head Pose Estimation (solvePnP)
         self.model_points_3d = np.array([
@@ -223,16 +284,29 @@ class BlinkCounterandEARPlot:
             )
 
     def estimate_distance(self, landmarks):
-        """Estimate distance from eyes to camera (in cm) using Interpupillary Distance."""
+        """Estimate distance from eyes to camera (in cm) using Interpupillary Distance in pixels."""
+        if not landmarks or 33 not in landmarks or 263 not in landmarks:
+            return None
         left_eye = np.array(landmarks[33])
         right_eye = np.array(landmarks[263])
         self.current_eye_pixel_dist = np.linalg.norm(left_eye - right_eye)
         if self.current_eye_pixel_dist > 0:
-            return self.K_factor / self.current_eye_pixel_dist
+            raw_dist = float(self.K_factor / self.current_eye_pixel_dist)
+            if not hasattr(self, 'filtered_dist_cm') or self.filtered_dist_cm is None:
+                self.filtered_dist_cm = raw_dist
+            else:
+                self.filtered_dist_cm = 0.75 * self.filtered_dist_cm + 0.25 * raw_dist
+            return round(self.filtered_dist_cm, 1)
         return None
 
     def estimate_head_pose(self, landmarks, frame_w, frame_h):
-        """Calculate Pitch, Yaw, Roll angles of the head using solvePnP."""
+        """Calculate Pitch, Yaw, Roll angles of the head using solvePnP safely."""
+        if not landmarks or not isinstance(landmarks, dict):
+            return None, None, None
+        for idx in self.head_pose_landmarks:
+            if idx not in landmarks:
+                return None, None, None
+
         image_points_2d = np.array([
             landmarks[idx] for idx in self.head_pose_landmarks
         ], dtype=np.float64)
@@ -297,7 +371,7 @@ class BlinkCounterandEARPlot:
     def draw_head_axes(self, frame, landmarks, pitch=None, yaw=None, roll=None, length=50):
         """Draw X/Y/Z head axes with the actual nose tip (landmark 1) as the origin,
         dynamically rotating according to the calibrated Pitch, Yaw, Roll angles."""
-        if pitch is None or yaw is None or roll is None:
+        if pitch is None or yaw is None or roll is None or not landmarks or 1 not in landmarks:
             return
 
         # Origin is always attached to the nose tip (Landmark index 1)
@@ -459,15 +533,23 @@ class BlinkCounterandEARPlot:
 
     def eye_aspect_ratio(self, eye_landmarks, landmarks):
         """
-        Calculate the eye aspect ratio (EAR) for given eye landmarks.
+        Calculate the eye aspect ratio (EAR) for given eye landmarks safely.
         """
-        A = np.linalg.norm(np.array(landmarks[eye_landmarks[1]]) - 
-                          np.array(landmarks[eye_landmarks[5]]))
-        B = np.linalg.norm(np.array(landmarks[eye_landmarks[2]]) - 
-                          np.array(landmarks[eye_landmarks[4]]))
-        C = np.linalg.norm(np.array(landmarks[eye_landmarks[0]]) - 
-                          np.array(landmarks[eye_landmarks[3]]))
-        return (A + B) / (2.0 * C)
+        if not landmarks or not isinstance(landmarks, dict):
+            return 0.3
+        for idx in eye_landmarks:
+            if idx not in landmarks:
+                return 0.3
+        try:
+            A = np.linalg.norm(np.array(landmarks[eye_landmarks[1]]) - 
+                              np.array(landmarks[eye_landmarks[5]]))
+            B = np.linalg.norm(np.array(landmarks[eye_landmarks[2]]) - 
+                              np.array(landmarks[eye_landmarks[4]]))
+            C = np.linalg.norm(np.array(landmarks[eye_landmarks[0]]) - 
+                              np.array(landmarks[eye_landmarks[3]]))
+            return (A + B) / (2.0 * C) if C > 0 else 0.3
+        except Exception:
+            return 0.3
 
     def _update_plot(self, ear):
         """Update the plot with new EAR values."""
@@ -518,35 +600,45 @@ class BlinkCounterandEARPlot:
         Process a single frame to detect eyes, head pose, and distance.
         """
         fh, fw, _ = frame.shape
+        
+        # Auto-gamma low-light boost if camera feed is dark
+        try:
+            mean_lum = float(np.mean(frame))
+            if mean_lum < 60.0:
+                gamma = 1.7 if mean_lum < 30.0 else 1.4
+                inv_gamma = 1.0 / gamma
+                table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+                frame = cv.LUT(frame, table)
+        except Exception:
+            pass
+
         frame, face_landmarks = self.generator.create_face_mesh(frame, draw=False)
         
-        if not face_landmarks:
+        if face_landmarks and 33 in face_landmarks and 263 in face_landmarks:
+            right_ear = self.eye_aspect_ratio(self.RIGHT_EYE_EAR, face_landmarks)
+            left_ear = self.eye_aspect_ratio(self.LEFT_EYE_EAR, face_landmarks)
+            ear = (right_ear + left_ear) / 2.0
+            dist_cm = self.estimate_distance(face_landmarks)
+            pitch, yaw, roll = self.estimate_head_pose(face_landmarks, fw, fh)
+            color = self.COLORS['BLUE']['bgr'] if ear < self.EAR_THRESHOLD else self.COLORS['GREEN']['bgr']
+            self._draw_frame_elements(frame, face_landmarks, color, dist_cm, pitch, yaw, roll, ear)
+            return frame, ear
+        else:
+            last_dist = getattr(self, 'filtered_dist_cm', 50.0)
+            last_pitch = self.last_raw_pose[0] if getattr(self, 'last_raw_pose', None) else 0.0
+            last_yaw = self.last_raw_pose[1] if getattr(self, 'last_raw_pose', None) else 0.0
+            last_roll = self.last_raw_pose[2] if getattr(self, 'last_raw_pose', None) else 0.0
+            color = self.COLORS['RED']['bgr']
+            self._draw_frame_elements(frame, {}, color, last_dist, last_pitch, last_yaw, last_roll, 0.3)
             return frame, None
-            
-        # 1. Calculate EAR
-        right_ear = self.eye_aspect_ratio(self.RIGHT_EYE_EAR, face_landmarks)
-        left_ear = self.eye_aspect_ratio(self.LEFT_EYE_EAR, face_landmarks)
-        ear = (right_ear + left_ear) / 2.0
-        
-        # 2. Estimate Distance
-        dist_cm = self.estimate_distance(face_landmarks)
-
-        # 3. Estimate Head Pose
-        pitch, yaw, roll = self.estimate_head_pose(face_landmarks, fw, fh)
-
-        # Determine visualization color
-        color = self.COLORS['BLUE']['bgr'] if ear < self.EAR_THRESHOLD else self.COLORS['GREEN']['bgr']
-        
-        # Draw landmarks and info
-        self._draw_frame_elements(frame, face_landmarks, color, dist_cm, pitch, yaw, roll, ear)
-        
-        return frame, ear
 
     def _draw_frame_elements(self, frame, landmarks, color, dist_cm=None, pitch=None, yaw=None, roll=None, ear=None):
         """Draw eye landmarks, blink counter, distance, pose & warnings on frame."""
-        for eye in [self.RIGHT_EYE, self.LEFT_EYE]:
-            for loc in eye:
-                cv.circle(frame, (landmarks[loc]), 2, color, cv.FILLED)
+        if landmarks and isinstance(landmarks, dict):
+            for eye in [self.RIGHT_EYE, self.LEFT_EYE]:
+                for loc in eye:
+                    if loc in landmarks:
+                        cv.circle(frame, landmarks[loc], 2, color, cv.FILLED)
 
         self.draw_head_axes(frame, landmarks, pitch, yaw, roll)
         
@@ -621,7 +713,7 @@ class BlinkCounterandEARPlot:
 
         # Extract normalized nose tip (landmark index 1)
         fh, fw = frame.shape[:2]
-        nose_pt = landmarks[1] if (landmarks is not None and len(landmarks) > 1) else (fw // 2, fh // 2)
+        nose_pt = landmarks[1] if (landmarks is not None and 1 in landmarks) else (fw // 2, fh // 2)
         norm_nose_x = nose_pt[0] / fw if fw > 0 else 0.5
         norm_nose_y = nose_pt[1] / fh if fh > 0 else 0.55
 
@@ -646,52 +738,31 @@ class BlinkCounterandEARPlot:
                 blink_rate_bpm=calc_bpm
             )
 
+        # Encode processed frame with 3D pose & landmarks overlay for local web streaming (High Resolution Crisp Quality: 92)
+        global _latest_jpeg_bytes
+        try:
+            ret_jpg, jpeg_buf = cv.imencode('.jpg', frame, [cv.IMWRITE_JPEG_QUALITY, 92])
+            if ret_jpg:
+                with _latest_frame_lock:
+                    _latest_jpeg_bytes = jpeg_buf.tobytes()
+        except Exception:
+            pass
+
     def process_video(self):
         """Process the video / webcam / ESP32-CAM stream."""
         try:
             # Open video capture (supports 0 for webcam, file paths, or ESP32-CAM HTTP URLs)
             if isinstance(self.video_path, str) and self.video_path.startswith("http"):
-                clean_url = self.video_path.rstrip("/")
-                if ":81/stream" in clean_url or "/stream" in clean_url or "/mjpeg" in clean_url:
-                    urls_to_try = [self.video_path]
-                else:
-                    urls_to_try = [
-                        f"{clean_url}:81/stream",
-                        f"{clean_url}/stream",
-                        f"{clean_url}/mjpeg",
-                        self.video_path
-                    ]
-                
-                cap = None
-                for url in urls_to_try:
-                    print(f"[ESP32-CAM] Connecting to: {url} ...")
-                    temp_cap = ThreadedVideoStream(url)
-                    if temp_cap.isOpened():
-                        ret, _ = temp_cap.read()
-                        if ret:
-                            print(f"[ESP32-CAM SUCCESS] Connected to {url}")
-                            temp_cap.start()
-                            cap = temp_cap
-                            break
-                        temp_cap.release()
-                
-                if cap is None or not cap.isOpened():
-                    print(f"\n⚠️  [CAMERA FALLBACK] Cannot connect to ESP32-CAM stream at {self.video_path}.")
-                    print("👉 Automatically switching to local computer Webcam (device index 0)...\n")
-                    self.video_path = 0
-                    cap = ThreadedVideoStream(0)
-                    if not cap.isOpened():
-                        raise IOError("Failed to open both ESP32-CAM stream and local computer Webcam (0)")
-                    cap.set(cv.CAP_PROP_FRAME_WIDTH, 640)
-                    cap.set(cv.CAP_PROP_FRAME_HEIGHT, 480)
-                    cap.start()
+                print(f"📡 [ESP32-CAM STREAM ENGINE] Starting HTTP stream decoder for: {self.video_path}")
+                cap = ThreadedVideoStream(self.video_path)
+                cap.start()
             elif isinstance(self.video_path, int):
                 # Webcam: use ThreadedVideoStream to avoid latency
                 cap = ThreadedVideoStream(self.video_path)
                 if not cap.isOpened():
                     raise IOError(f"Failed to open video source: {self.video_path}")
-                cap.set(cv.CAP_PROP_FRAME_WIDTH, 640)
-                cap.set(cv.CAP_PROP_FRAME_HEIGHT, 480)
+                cap.set(cv.CAP_PROP_FRAME_WIDTH, 1280)
+                cap.set(cv.CAP_PROP_FRAME_HEIGHT, 720)
                 cap.start()
             else:
                 # Video file: use normal cv.VideoCapture to process all frames sequentially
@@ -725,22 +796,57 @@ class BlinkCounterandEARPlot:
                     pass
 
     def _process_video_frames(self, cap):
-        """Process individual frames from video capture."""
+        """Process individual frames from video capture with auto-reconnect resilience."""
         is_live_stream = isinstance(self.video_path, int) or (
             isinstance(self.video_path, str) and self.video_path.startswith("http")
         )
 
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
+        consecutive_read_failures = 0
+        while getattr(self, 'running', True):
+            ret, frame = False, None
+            if cap is not None and hasattr(cap, 'isOpened') and cap.isOpened():
+                try:
+                    ret, frame = cap.read()
+                except Exception:
+                    ret, frame = False, None
 
-            # Process frame and get EAR
-            frame, ear = self.process_frame(frame)
-            
-            if ear is not None:
-                self._update_blink_detection(ear)
-                self._update_visualization(frame, ear, is_live_stream)
+            if not ret or frame is None:
+                consecutive_read_failures += 1
+                if hasattr(self, 'firebase_sync') and consecutive_read_failures % 10 == 0:
+                    self.firebase_sync.update_state(
+                        pitch=None, roll=None, yaw=None,
+                        dist_cm=None, ear=None, blinks=self.blink_counter,
+                        warnings=[f"Connecting to video stream ({self.video_path})..."],
+                        posture_status="CONNECTING", blink_rate_bpm=0.0
+                    )
+                time.sleep(0.05)
+
+                # Reconnect attempt every 3 seconds for HTTP / RTSP / live stream
+                if is_live_stream and consecutive_read_failures % 60 == 0:
+                    print(f"🔄 Reconnecting to video stream: {self.video_path}...")
+                    try:
+                        if cap and hasattr(cap, 'release'):
+                            cap.release()
+                        if isinstance(self.video_path, str) and self.video_path.startswith("http"):
+                            cap = ThreadedVideoStream(self.video_path)
+                            cap.start()
+                        else:
+                            cap = cv.VideoCapture(self.video_path)
+                    except Exception as err:
+                        print(f"⚠️ Reconnect error: {err}")
+                continue
+
+            consecutive_read_failures = 0
+
+            # Process frame safely without stopping the script on unexpected frame errors
+            try:
+                frame, ear = self.process_frame(frame)
+                if ear is not None:
+                    self._update_blink_detection(ear)
+                    self._update_visualization(frame, ear, is_live_stream)
+            except Exception as frame_err:
+                import traceback
+                print(f"⚠️ [FRAME SKIP] Exception: {frame_err}\n{traceback.format_exc()}")
 
             if getattr(self, 'show_gui', True):
                 wait_time = 1 if is_live_stream else 30
@@ -770,6 +876,9 @@ class BlinkCounterandEARPlot:
 
     def _update_visualization(self, frame, ear, is_live_stream=False):
         """Update the visualization including the plot and video output."""
+        if not getattr(self, 'show_gui', True) and not getattr(self, 'save_video', False):
+            return
+
         # Refresh plot image (every 2 frames on live stream for max CPU speed)
         if not is_live_stream or self.frame_number % 2 == 0 or self.cached_plot_img is None:
             self._update_plot(ear)
@@ -824,7 +933,7 @@ class BlinkCounterandEARPlot:
 
 if __name__ == "__main__":
     import sys
-    input_video_path = "http://172.20.10.3:81/stream"
+    input_video_path = 0
     show_gui = True
 
     for a in sys.argv[1:]:

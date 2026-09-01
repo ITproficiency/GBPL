@@ -220,3 +220,39 @@ def stop_tracking_api():
     """Stop the active Python AI tracking process when user stops camera on Web UI."""
     tracking_manager.stop_tracking()
     return {"status": "ok", "active": False}
+
+
+from fastapi.responses import StreamingResponse
+import urllib.request
+
+@router.get("/video_feed")
+def video_feed():
+    """Proxy live processed AI camera frames (with 3D pose axes & landmarks) to web dashboard."""
+    def frame_generator():
+        import socket
+        active_port = None
+        for port in [8089, 8090, 8091]:
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+                    active_port = port
+                    break
+            except Exception:
+                pass
+
+        target_port = active_port or 8089
+        url = f"http://127.0.0.1:{target_port}/stream"
+        try:
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=10.0) as resp:
+                while True:
+                    chunk = resp.read(1024 * 8)
+                    if not chunk:
+                        break
+                    yield chunk
+        except Exception:
+            pass
+
+    return StreamingResponse(
+        frame_generator(),
+        media_type="multipart/x-mixed-replace; boundary=frame"
+    )

@@ -161,12 +161,17 @@ def _analyze_mock(reading: dict) -> dict:
     d_max = rules["distance_cm"]["target_max"]
     lux_min = rules["brightness_lux"]["target_min"]
 
-    if reading["distance_cm"] < d_min:
+    dist = reading.get("distance_cm")
+    dist_val = dist if dist is not None else 50.0
+    lux = reading.get("brightness_lux")
+    lux_val = lux if lux is not None else 350.0
+
+    if dist_val < d_min:
         recommendations.append(f"Move back to {d_min}-{d_max} cm from the screen.")
-    elif reading["distance_cm"] > d_max:
+    elif dist_val > d_max:
         recommendations.append(f"Move closer to {d_min}-{d_max} cm from the screen.")
 
-    if reading["brightness_lux"] < lux_min:
+    if lux_val < lux_min:
         recommendations.append(f"Increase lighting to at least {lux_min} lux.")
 
     if reading.get("sitting_minutes", 0) > rules["sitting_minutes"]["max_continuous"]:

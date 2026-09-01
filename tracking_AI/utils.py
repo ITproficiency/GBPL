@@ -4,17 +4,42 @@ import cv2 as cv
 import numpy as np
 from typing import Tuple, Union, Optional
 
+import urllib.request
+import ssl
+
 class ThreadedVideoStream:
     """
-    A threaded wrapper around cv2.VideoCapture to continuously read frames
-    in a dedicated background thread, preventing frame buffer lag for live streams.
+    A threaded wrapper around cv2.VideoCapture / urllib HTTP MJPEG stream decoder.
+    Reads continuous frames in a background thread to eliminate frame buffer lag.
     """
     def __init__(self, src=0):
-        self.stream = cv.VideoCapture(src)
-        self.grabbed, self.frame = self.stream.read()
+        self.src = src
         self.stopped = False
         self.lock = threading.Lock()
+        self.grabbed = False
+        self.frame = None
         self.thread = None
+        self.is_network_stream = isinstance(self.src, str) and self.src.startswith("http")
+        self.stream = None
+        self.urllib_resp = None
+
+        if not self.is_network_stream:
+            self.stream = cv.VideoCapture(src)
+            self.grabbed, self.frame = self.stream.read()
+        else:
+            self._init_network_stream()
+
+    def _init_network_stream(self):
+        try:
+            req = urllib.request.Request(self.src, headers={'User-Agent': 'ESP32-CAM-Decoder'})
+            ctx = ssl._create_unverified_context()
+            self.urllib_resp = urllib.request.urlopen(req, timeout=5.0, context=ctx)
+            self.grabbed = True
+            print(f"✅ [ESP32-CAM HTTP STREAM OPENED] {self.src}")
+        except Exception as e:
+            self.grabbed = False
+            self.urllib_resp = None
+            print(f"⚠️ [ESP32-CAM HTTP CONNECT ERROR] {e}")
 
     def start(self):
         if self.thread is None:
@@ -23,23 +48,43 @@ class ThreadedVideoStream:
         return self
 
     def _update(self):
-        fail_count = 0
-        while not self.stopped:
-            if not self.stream.isOpened():
-                break
-            grabbed, frame = self.stream.read()
-            if not grabbed:
-                fail_count += 1
-                if fail_count > 40:
+        if not self.is_network_stream:
+            while not self.stopped:
+                if not self.stream or not self.stream.isOpened():
+                    break
+                grabbed, frame = self.stream.read()
+                with self.lock:
+                    self.grabbed = grabbed
+                    self.frame = frame
+                time.sleep(0.02)
+        else:
+            bytes_buffer = b""
+            while not self.stopped:
+                if self.urllib_resp is None:
+                    time.sleep(1.0)
+                    if not self.stopped:
+                        self._init_network_stream()
+                    continue
+                try:
+                    chunk = self.urllib_resp.read(1024)
+                    if not chunk:
+                        raise IOError("Empty MJPEG chunk read")
+                    bytes_buffer += chunk
+                    a = bytes_buffer.find(b'\xff\xd8')
+                    b = bytes_buffer.find(b'\xff\xd9')
+                    if a != -1 and b != -1 and b > a:
+                        jpg_data = bytes_buffer[a:b+2]
+                        bytes_buffer = bytes_buffer[b+2:]
+                        frame = cv.imdecode(np.frombuffer(jpg_data, dtype=np.uint8), cv.IMREAD_COLOR)
+                        if frame is not None:
+                            with self.lock:
+                                self.grabbed = True
+                                self.frame = frame
+                except Exception as err:
                     with self.lock:
                         self.grabbed = False
-                    break
-                time.sleep(0.02)
-                continue
-            fail_count = 0
-            with self.lock:
-                self.grabbed = grabbed
-                self.frame = frame
+                    self.urllib_resp = None
+                    time.sleep(1.0)
 
     def read(self):
         with self.lock:
@@ -48,19 +93,31 @@ class ThreadedVideoStream:
         return grabbed, frame
 
     def isOpened(self):
-        return self.stream.isOpened() and not self.stopped
+        if self.is_network_stream:
+            return self.urllib_resp is not None or self.grabbed
+        return self.stream is not None and self.stream.isOpened() and not self.stopped
 
     def set(self, propId, value):
-        return self.stream.set(propId, value)
+        if self.stream is not None:
+            return self.stream.set(propId, value)
+        return True
 
     def get(self, propId):
-        return self.stream.get(propId)
+        if self.stream is not None:
+            return self.stream.get(propId)
+        return 0.0
 
     def release(self):
         self.stopped = True
         if self.thread is not None and self.thread.is_alive():
             self.thread.join(timeout=1.0)
-        self.stream.release()
+        if self.stream is not None:
+            self.stream.release()
+        if self.urllib_resp is not None:
+            try:
+                self.urllib_resp.close()
+            except Exception:
+                pass
 
 
 
