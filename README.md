@@ -134,33 +134,40 @@ gpbl/
 
 ---
 
-## 🚀 Quick Start Guide
+## 🚀 Quick Start (clone / pull → run)
 
-**Python 3.10–3.12** is required for the tracking stack (MediaPipe). **3.11 is recommended.** Python 3.13 is not supported for `tracking_AI`.
+**Python 3.10–3.12** is required for the full stack (MediaPipe). **3.11 is recommended.** Python 3.13 is **not** supported for `tracking_AI`.
 
-From the repo root, `./run.sh` (macOS / Linux) or `.\run.ps1` (Windows) creates two venvs, bootstraps missing config, starts the dashboard, then launches tracking. That is the supported path after `git clone`.
+The supported way to run the project is from the **repo root** with `run.ps1` (Windows) or `run.sh` (macOS / Linux). Do **not** `pip install` globally.
 
-**macOS Camera:** grant Camera access to the **parent app** (Terminal, iTerm, VS Code, or Cursor) under System Settings → Privacy & Security → Camera. If access is denied, tracking stays up with a “CONNECTING…” placeholder; it does not exit.
+> Recent functional changes are summarized in [`UPDATE.md`](UPDATE.md).
 
-### Step 1: Flash Firmware to ESP32-S3
+### 1. Get the code
 
-1. Open the project in VS Code with the **PlatformIO** extension.
-2. Edit WiFi credentials in [firmware/src/main.cpp](file:///d:/Documents/PlatformIO/Projects/gpbl/firmware/src/main.cpp):
-   ```cpp
-   const char* ssid = "YOUR_WIFI_SSID";
-   const char* password = "YOUR_WIFI_PASSWORD";
-   ```
-3. Connect the ESP32-S3 via USB and upload:
-   ```bash
-   pio run -t upload
-   ```
-4. Open the Serial Monitor (`115200` baud) to find the ESP32 IP address (e.g. `http://192.168.1.50`).
+```bash
+git clone <repo-url>
+cd GBPL
+```
 
----
+Already have the repo? After pulling new commits:
 
-### Step 2: Run dashboard + AI tracking (repo root)
+```bash
+git pull
+```
 
-Prefer the root launcher (venv + config + FastAPI + tracking). Do not `pip install` globally.
+No extra manual install step is needed on pull — the launcher reuses existing venvs and only reinstalls dependencies when `requirements.txt` changes.
+
+### 2. One-time secrets (required before first run)
+
+| File | What to do |
+|---|---|
+| `dashboard/gPBL/backend/serviceAccountKey.json` | **Required.** Firebase Console → Project Settings → Service accounts → **Generate new private key**. Save the JSON here. The launcher will **not** create a fake key. |
+| `dashboard/gPBL/backend/.env` | Auto-copied from `.env.example` on first run. Edit `OPENROUTER_API_KEY` if you want real LLM advice (optional — mock advice works without it). |
+| `dashboard/gPBL/backend/data/rules.json` | Auto-copied from `data/rules.json.example` on first run. Edit posture / lighting thresholds if needed. |
+
+### 3. Run full stack (dashboard + AI tracking)
+
+From the **repo root**:
 
 **Windows (PowerShell):**
 ```powershell
@@ -172,19 +179,90 @@ Prefer the root launcher (venv + config + FastAPI + tracking). Do not `pip insta
 chmod +x run.sh && ./run.sh
 ```
 
-Optional camera argument (default `0`): `./run.sh 0` or `.\run.ps1 0`. For an ESP32 MJPEG URL, pass it as the first argument.
+What the launcher does automatically:
 
-- Press **`c`** to calibrate baseline head pose (0°) and eye distance.
-- Press **`p`** to quit tracking (the dashboard process is then stopped).
+1. Creates / reuses two virtual environments:
+   - `dashboard/gPBL/backend/.venv` — FastAPI backend
+   - `tracking_AI/.venv` — MediaPipe / OpenCV tracking
+2. Installs Python dependencies when `requirements.txt` changes
+3. Starts FastAPI on port **8080**
+4. Launches AI tracking in the foreground
 
----
+**Camera source** (optional first argument, default `0` = built-in webcam):
 
-### Step 3: Dashboard-only (optional)
+```powershell
+# Webcam index 0
+.\run.ps1 0
 
-If you only need the web UI, use the nested scripts in `dashboard/gPBL/` (Python 3.13 is allowed here; no MediaPipe). You still need `backend/serviceAccountKey.json` (copy from the `.example` or a Firebase Admin key). Root scripts copy `.env` and `data/rules.json` from examples when missing; they will not invent a fake service-account key.
+# ESP32 MJPEG stream
+.\run.ps1 http://192.168.1.50:81/stream
+```
 
-- **Dashboard**: [http://localhost:8080/dashboard](http://localhost:8080/dashboard)
-- **Interactive API Docs**: [http://localhost:8080/docs](http://localhost:8080/docs)
+```bash
+./run.sh 0
+./run.sh http://192.168.1.50:81/stream
+```
+
+**Open in browser:**
+
+- Dashboard: [http://localhost:8080/dashboard](http://localhost:8080/dashboard)
+- API docs: [http://localhost:8080/docs](http://localhost:8080/docs)
+
+**In the tracking window:**
+
+- **`c`** — calibrate baseline head pose (0°) and eye distance
+- **`p`** — quit tracking (dashboard stops too)
+
+**In the web UI:**
+
+1. Click **Start Camera** and follow the 4-step wizard (preview → calibrate → enter dashboard).
+2. **Stop Stream = Stop Session** — ends the session, turns off LEDs, and can generate a session report.
+
+**macOS Camera:** grant Camera access to the **parent app** (Terminal, iTerm, VS Code, or Cursor) under System Settings → Privacy & Security → Camera. If access is denied, tracking stays up with a “CONNECTING…” placeholder; it does not exit.
+
+### 4. Dashboard-only (optional)
+
+If you only need the web UI (no MediaPipe), run from `dashboard/gPBL/`:
+
+```powershell
+cd dashboard\gPBL
+.\run.ps1
+```
+
+```bash
+cd dashboard/gPBL
+chmod +x run.sh && ./run.sh
+```
+
+Python **3.13** is allowed here. You still need `backend/serviceAccountKey.json`.
+
+### 5. Flash firmware to ESP32-S3 (optional hardware)
+
+Only needed if you use real ESP32 sensors / LED feedback / MJPEG camera stream.
+
+1. Open the project in VS Code with the **PlatformIO** extension.
+2. Edit WiFi credentials in [`firmware/src/main.cpp`](firmware/src/main.cpp):
+   ```cpp
+   const char* ssid = "YOUR_WIFI_SSID";
+   const char* password = "YOUR_WIFI_PASSWORD";
+   ```
+3. Connect the ESP32-S3 via USB and upload:
+   ```bash
+   pio run -t upload
+   ```
+4. Open Serial Monitor (`115200` baud) to find the ESP32 IP (e.g. `http://192.168.1.50:81/stream`).
+
+Firmware lives in `firmware/` only. The old duplicate folder `firmware and tinyML/` was removed.
+
+### Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `MISSING: backend/serviceAccountKey.json` | Add the real Firebase Admin key (see step 2). |
+| `Python 3.10-3.12 not found` | Install Python 3.11 and ensure it is on `PATH`. |
+| Port 8080 already in use | Stop the other process using 8080, then rerun the launcher. |
+| Camera shows “CONNECTING…” | Check macOS/Windows camera permission for your terminal/IDE. |
+| LLM advice looks generic | Set a real `OPENROUTER_API_KEY` in `backend/.env`. |
 
 ---
 
