@@ -53,7 +53,24 @@ def _rest_put(path: str, data: Any) -> bool:
         payload = json.dumps(data, ensure_ascii=False).encode('utf-8')
         req = urllib.request.Request(url, data=payload, method='PUT', headers={'Content-Type': 'application/json'})
         ctx = ssl._create_unverified_context()
-        with urllib.request.urlopen(req, data=payload, method='PUT', headers={'Content-Type': 'application/json'}) as resp:
+        with urllib.request.urlopen(req, timeout=3.0, context=ctx) as resp:
+            return True
+    except Exception:
+        return False
+
+
+def _rest_patch(path: str, data: Any) -> bool:
+    try:
+        url = f"{config.FIREBASE_DATABASE_URL.rstrip('/')}/{path.lstrip('/')}.json"
+        payload = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            method="PATCH",
+            headers={"Content-Type": "application/json"},
+        )
+        ctx = ssl._create_unverified_context()
+        with urllib.request.urlopen(req, timeout=3.0, context=ctx) as resp:
             return True
     except Exception:
         return False
@@ -105,17 +122,28 @@ def get_advice_list(limit: int = 5) -> list[dict]:
     return combined[:limit]
 
 
-def push_led_state(is_on: bool) -> None:
+def get_latest_advice_for_session(session_id: str | None) -> dict | None:
+    if not session_id:
+        return None
+    for item in get_advice_list(limit=50):
+        if item.get("session_id") == session_id:
+            return item
+    return None
+
+
+def push_led_state(red: bool = False, green: bool = False, blink: bool = False) -> None:
+    """Write `/led_state` as `{red, green, blink}` — never a boolean."""
+    payload = {"red": bool(red), "green": bool(green), "blink": bool(blink)}
     global _use_rest_fallback
     if not _use_rest_fallback:
         try:
             ref = get_ref(config.FIREBASE_LED_PATH)
             if ref:
-                ref.set(is_on)
+                ref.set(payload)
                 return
         except Exception:
             _use_rest_fallback = True
-    _rest_put(config.FIREBASE_LED_PATH, is_on)
+    _rest_put(config.FIREBASE_LED_PATH, payload)
 
 
 def push_advice(advice: dict, reading: dict) -> str:
@@ -123,10 +151,14 @@ def push_advice(advice: dict, reading: dict) -> str:
     item_id = f"adv_{int(time.time()*1000)}"
     payload = {
         "device_id": reading.get("device_id", "esp32_001"),
+        "session_id": reading.get("session_id"),
         "summary": advice.get("summary", "PostureCare Advice"),
         "recommendations": advice.get("recommendations", []),
+        "spoken_line": advice.get("spoken_line"),
         "model_name": advice.get("model_name", "mock-advisor-v1"),
         "risk_level": reading.get("risk_level", "warning"),
+        "severity": reading.get("severity"),
+        "flag_set": reading.get("flag_set") or [],
         "distance_cm": reading.get("distance_cm"),
         "brightness_lux": reading.get("brightness_lux"),
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -189,14 +221,61 @@ def push_calibration_request(calib_type: str = "pose") -> bool:
     return trigger_head_pose_calibration()
 
 
+_AI_OVERLAY_KEYS = (
+    "pitch",
+    "roll",
+    "yaw",
+    "camera_distance_cm",
+    "ai_distance_cm",
+    "ear",
+    "blinks",
+    "blink_rate",
+    "blink_rate_bpm",
+    "head_pitch",
+    "head_roll",
+    "head_yaw",
+    "warnings",
+    "posture_status",
+    "head_pose_thresholds",
+    "nose_x",
+    "nose_y",
+    "face_present",
+    "face_lost_sec",
+    "flag_durations",
+    "flag_set",
+)
+
+
+def _clear_sensor_ai_overlay() -> None:
+    """Drop AI-patched keys from sensor_data without wiping ESP32 readings."""
+    payload = {key: None for key in _AI_OVERLAY_KEYS}
+    global _use_rest_fallback
+    if not _use_rest_fallback:
+        try:
+            ref = get_ref(config.FIREBASE_SENSOR_PATH)
+            if ref:
+                ref.update(payload)
+                return
+        except Exception:
+            _use_rest_fallback = True
+    _rest_patch(config.FIREBASE_SENSOR_PATH, payload)
+
+
 def reset_ai_data() -> bool:
     global _use_rest_fallback
+    ok = False
     if not _use_rest_fallback:
         try:
             ref = get_ref("ai_data")
             if ref:
                 ref.delete()
-                return True
+                ok = True
         except Exception:
             _use_rest_fallback = True
-    return _rest_put("ai_data", {})
+    if not ok:
+        ok = _rest_put("ai_data", {})
+    try:
+        _clear_sensor_ai_overlay()
+    except Exception:
+        pass
+    return ok

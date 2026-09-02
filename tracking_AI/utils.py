@@ -1,3 +1,4 @@
+import sys
 import threading
 import time
 import cv2 as cv
@@ -26,6 +27,15 @@ class ThreadedVideoStream:
         if not self.is_network_stream:
             self.stream = cv.VideoCapture(src)
             self.grabbed, self.frame = self.stream.read()
+            if (not self.stream.isOpened()) or (not self.grabbed):
+                print(
+                    "WARNING: Camera is unreadable "
+                    "(opened=%s, grabbed=%s). On macOS, grant Camera access "
+                    "to the parent app (Terminal / iTerm / VS Code / Cursor) "
+                    "under System Settings \u2192 Privacy & Security \u2192 Camera."
+                    % (self.stream.isOpened(), self.grabbed),
+                    file=sys.stderr,
+                )
         else:
             self._init_network_stream()
 

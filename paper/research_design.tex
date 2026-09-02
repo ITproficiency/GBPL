@@ -1,0 +1,85 @@
+
+
+\subsection{Hardware System Architecture}
+
+\subsubsection{Edge Acquisition Module (Freenove ESP32-S3 \& OV3660)}
+The edge sensing node is powered by the Freenove ESP32-S3 WROOM module equipped with an integrated $8\,\text{MB}$ PSRAM and Wi-Fi connectivity. Image streams are captured using an OmniVision OV3660 3-Megapixel camera module \cite{esp32_iot}.
+
+\begin{figure}[!ht]
+    \centering
+    \includegraphics[width=0.22\linewidth]{freenove.png}
+    \caption{Freenove ESP32-S3 Board with Integrated Camera Module}
+    \label{fig:esp32_s3_board}
+\end{figure}
+
+The ESP32-S3 serves as an IoT gateway to capture physical telemetry, manage primary camera frame acquisition, and transmit continuous data payloads directly to Google Firebase Realtime Database.
+
+\subsubsection{Multimodal Physical Telemetry Sensors}
+\begin{itemize}
+    \item \textbf{Eye-to-Screen Distance Telemetry:} An Ultrasonic Sensor (HC-SR04) mounted adjacent to the monitor measures real-time distance ($Z_{\text{ultra}}$ in $\text{cm}$) between the user and the workstation screen to mitigate Computer Vision Syndrome (CVS) \cite{cvs_distance}.
+    \item \textbf{Workspace Illuminance Monitoring:} A Light Dependent Resistor (LDR) module collects ambient workspace illuminance levels ($L_{\text{ambient}}$ in $\text{Lux}$) to ensure compliance with ergonomic lighting standards \cite{workspace_lighting}.
+\end{itemize}
+
+\subsection{Experimental Setup and Participant Metadata}
+The combined edge hardware (ESP32-S3, OV3660, and HC-SR04) is mounted at eye level at the top-center of the primary monitor. The study evaluated $N = 15\text{--}20$ volunteer participants ($18\text{--}25$ years old). Participant baseline metadata---including Interpupillary Distance ($\text{IPD} \approx 63\,\text{mm}$), corrective eyewear usage, and average daily screen time---were recorded to normalize algorithmic thresholds.
+
+\subsection{Computer Vision and Ocular Telemetry Pipeline}
+Instead of on-device embedded neural networks, the vision pipeline leverages a client-side computer vision stream built on **MediaPipe** \cite{mediapipe} for spatial posture estimation and ocular fatigue analysis.
+
+\begin{figure}[!ht]
+    \centering
+    \includegraphics[width=0.25\linewidth]{image/ypr.png}
+    \caption{Facial Coordinate Frame Definition for Yaw ($\theta_y$), Pitch ($\theta_p$), and Roll ($\theta_r$)}
+    \label{fig:ypr_angles}
+\end{figure}
+
+\subsubsection{3D Head Pose Estimation via MediaPipe Face Mesh}
+1. \textbf{Landmark Extraction:} MediaPipe Face Mesh extracts 468 3D facial keypoints from the camera feed in real time \cite{mediapipe}.
+2. \textbf{Perspective-n-Point (PnP) Alignment:} Selected 2D landmark coordinates (e.g., nose tip, chin, eye corners, mouth corners) are projected onto a standard 3D facial model using OpenCV's \texttt{solvePnP} algorithm \cite{pnp_headpose}.
+3. \textbf{Euler Angle Derivation:} The calculated rotation matrix yields three canonical head orientation angles: Pitch ($\theta_p$), Yaw ($\theta_y$), and Roll ($\theta_r$).
+
+\subsubsection{Ocular Fatigue \& Blink Frequency Analysis (EAR)}
+Visual fatigue is evaluated by computing the Eye Aspect Ratio ($EAR$) using six facial landmarks per eye \cite{ear_blinking}:
+
+\begin{equation}
+EAR = \frac{\|p_2 - p_6\| + \|p_3 - p_5\|}{2 \|p_1 - p_4\|}
+\end{equation}
+
+A blink event is logged when $EAR$ drops below a preset threshold ($\approx 0.21$) for $2\text{--}3$ consecutive frames. Continuous blink counts are processed over a rolling 60-second window to calculate the real-time blink rate ($\text{blinks/min}$).
+
+\subsection{Multimodal Data Schema and Rule-Based Posture Classification}
+All extracted spatial, ocular, and physical metrics are packaged into a structured schema synchronized with Firebase.
+
+\begin{table}[htbp]
+\centering
+\caption{Multimodal Data Variables and System Roles}
+\label{tab:data_variables}
+\begin{tabular}{|l|l|p{7.5cm}|}
+\hline
+\textbf{Variable} & \textbf{Type} & \textbf{Description / Ergonomic Significance} \\ \hline
+Participant\_ID & Categorical & Anonymous participant identifier \\ \hline
+Timestamp & Time & UNIX timestamp for multi-sensor stream synchronization \\ \hline
+$\theta_p, \theta_y, \theta_r$ & Continuous & Head orientation Euler angles in degrees ($^\circ$) \\ \hline
+EAR & Continuous & Instantaneous Eye Aspect Ratio \\ \hline
+Blink Rate & Continuous & Computed ocular blink frequency ($\text{blinks/min}$) \\ \hline
+Distance & Continuous & User-to-screen physical distance ($\text{cm}$) \\ \hline
+Light Reading & Continuous & Workspace ambient illuminance ($\text{Lux}$) \\ \hline
+Posture Label & Categorical & Calculated posture state classification ($0\text{--}3$) \\ \hline
+\end{tabular}
+\end{table}
+
+A rule-based classification algorithm categorizes user posture in real time:
+
+\begin{equation}
+\text{Label} = 
+\begin{cases} 
+1 \text{ (Text Neck)} & \text{if } \theta_p < -5.0^\circ \\
+2 \text{ (Turned Away)} & \text{else if } |\theta_y| > 20.0^\circ \\
+3 \text{ (Tilted Head)} & \text{else if } |\theta_r| > 15.0^\circ \\
+0 \text{ (Normal)} & \text{otherwise}
+\end{cases}
+\end{equation}
+
+\subsection{Cloud LLM Integration and Ergonomic Reasoning}
+The synchronized telemetry payload (postural angles, blink rate, screen distance, ambient light, and cumulative exposure time) is forwarded from Firebase to a Cloud-based Large Language Model (LLM) \cite{llm_reasoning}. The LLM processes these time-series vectors to generate personalized, context-aware corrective advice and behavioral intervention feedback displayed on a web dashboard.
+

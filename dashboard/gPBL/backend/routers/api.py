@@ -1,9 +1,9 @@
 from __future__ import annotations
 import time
 from pathlib import Path
+from typing import Literal, Optional
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel, Field
 
 import config
@@ -11,8 +11,10 @@ import firebase_client
 import history_store
 import insight_service
 import llm_service
+import notification_governor as governor
 import processing
 import rules_store
+import session_manager
 
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -51,8 +53,10 @@ def _insight_cooldown_sec() -> int:
 @router.get("/rules")
 def get_rules():
     """Public rules — same source as risk evaluation (for dashboard display)."""
+    rules = processing.get_rules_public()
     return {
-        **processing.get_rules_public(),
+        **rules,
+        **governor.sitting_demo_public(rules),
         "insight_window_minutes": config.INSIGHT_WINDOW_MINUTES,
         "insight_min_readings": config.INSIGHT_MIN_READINGS,
         "analyze_cooldown_sec": _analyze_cooldown_sec(),
@@ -76,18 +80,34 @@ def update_cooldowns(settings: CooldownSettings):
     }
 
 
+class SittingDemoSettings(BaseModel):
+    demo_mode: bool
+    demo_max_minutes: int | None = Field(default=None, ge=1, le=20)
+
+
+@router.put("/settings/sitting-demo")
+def update_sitting_demo(settings: SittingDemoSettings):
+    """Toggle the demo sitting threshold (default 3 min). Does not re-enable too_long."""
+    rules = rules_store.update_sitting_demo(settings.demo_mode, settings.demo_max_minutes)
+    sitting = rules.get("sitting_minutes") or {}
+    return {
+        "demo_mode": bool(sitting.get("demo_mode")),
+        "demo_max_minutes": int(sitting.get("demo_max_minutes") or 3),
+        "sitting_threshold_sec": int(governor.sitting_threshold_sec(rules)),
+        "max_continuous": sitting.get("max_continuous", 20),
+        "too_long_enabled": bool(sitting.get("too_long_enabled")),
+    }
+
+
 @router.get("/sensor")
 def get_sensor():
+    """Read-only snapshot from session_manager. Never process_reading with side effects."""
     try:
-        raw = firebase_client.read_sensor_raw()
-        reading = processing.process_reading(raw, default_device_id=config.DEFAULT_DEVICE_ID)
+        return session_manager.get_manager().snapshot()
     except FileNotFoundError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    if reading is None:
-        return JSONResponse(content=None, status_code=200)
-    return reading
 
 
 @router.get("/advice")
@@ -100,10 +120,17 @@ def get_advice(limit: int = 5):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
+class AnalyzeRequest(BaseModel):
+    mode: Literal["explain", "advice"] = "advice"
+
+
 @router.post("/analyze")
-def analyze_now():
-    """Read Firebase → process_reading() → LLM if llm_eligible."""
+def analyze_now(req: AnalyzeRequest | None = Body(default=None)):
+    """Manual Get Advice / Explain — uses the session snapshot (pure reading). No auto-governor."""
     global _last_analyze_at
+    mode = (req.mode if req else "advice") or "advice"
+    if mode not in ("explain", "advice"):
+        mode = "advice"
 
     now = time.time()
     cooldown = _analyze_cooldown_sec()
@@ -112,8 +139,17 @@ def analyze_now():
         raise HTTPException(status_code=429, detail=f"Wait {wait}s before analyzing again")
 
     try:
-        raw = firebase_client.read_sensor_raw()
-        reading = processing.process_reading(raw, default_device_id=config.DEFAULT_DEVICE_ID)
+        mgr = session_manager.get_manager()
+        snap = mgr.snapshot()
+        reading = snap.get("reading")
+        if reading is None:
+            raw = firebase_client.read_sensor_raw()
+            sitting = (snap.get("session") or {}).get("sitting_minutes")
+            reading = processing.process_reading(
+                raw,
+                default_device_id=config.DEFAULT_DEVICE_ID,
+                sitting_minutes=sitting,
+            )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
@@ -122,30 +158,34 @@ def analyze_now():
     if reading is None:
         raise HTTPException(status_code=404, detail="No sensor data in Firebase")
 
-    if not reading["llm_eligible"]:
+    if mode != "explain" and not reading.get("llm_eligible") and not reading.get("flag_set"):
         return {
             "status": "skipped",
+            "mode": mode,
             "message": "Readings normal — LLM not needed",
             "reading": reading,
+            "session": snap.get("session"),
         }
 
-    advice = llm_service.analyze_warning(reading)
+    if isinstance(snap.get("session"), dict) and snap["session"].get("session_id"):
+        reading["session_id"] = reading.get("session_id") or snap["session"]["session_id"]
+
+    advice = llm_service.analyze_warning(reading, mode=mode)
     advice_id = firebase_client.push_advice(advice, reading)
     _last_analyze_at = now
 
     return {
         "status": "ok",
+        "mode": mode,
         "advice_id": advice_id,
         "reading": reading,
         "advice": advice,
+        "session": snap.get("session"),
     }
 
-
-from typing import Optional
-
 @router.post("/insights")
-def create_insight(window_minutes: Optional[int] = None):
-    """Aggregate the recent window from history_store and ask the LLM to narrate it."""
+def create_insight(session_id: Optional[str] = None):
+    """Aggregate the current (or last) session from history_store and ask the LLM to narrate it."""
     global _last_insight_at
 
     now = time.time()
@@ -154,11 +194,16 @@ def create_insight(window_minutes: Optional[int] = None):
         wait = int(cooldown - (now - _last_insight_at))
         raise HTTPException(status_code=429, detail=f"Wait {wait}s before generating another insight")
 
-    result = insight_service.generate_insight(config.DEFAULT_DEVICE_ID, window_minutes)
+    mgr = session_manager.get_manager()
+    sid = session_id or mgr.session_id or mgr.last_session_id
+    if not sid:
+        raise HTTPException(status_code=404, detail="No session to summarize yet")
+
+    result = insight_service.generate_insight(config.DEFAULT_DEVICE_ID, session_id=sid)
     if result is None:
         raise HTTPException(
             status_code=404,
-            detail=f"Not enough history yet (need at least {config.INSIGHT_MIN_READINGS} readings in the window)",
+            detail=f"Not enough history yet (need at least {config.INSIGHT_MIN_READINGS} readings in this session)",
         )
     _last_insight_at = now
     return result
@@ -169,7 +214,72 @@ def get_insights(limit: int = 5):
     return {"items": history_store.get_recent_insights(config.DEFAULT_DEVICE_ID, limit=limit)}
 
 
-import tracking_manager
+@router.get("/session")
+def get_session():
+    """Session snapshot: state, severity, snooze/DND, corrected counts, pending spoken_line."""
+    return session_manager.get_manager().snapshot()["session"]
+
+
+class DndRequest(BaseModel):
+    enabled: bool | None = None
+
+
+@router.post("/session/snooze")
+def session_snooze():
+    return session_manager.get_manager().snooze()
+
+
+@router.post("/session/ack")
+def session_ack():
+    return session_manager.get_manager().ack()
+
+
+@router.post("/session/dnd")
+def session_dnd(req: DndRequest = DndRequest()):
+    return session_manager.get_manager().set_dnd(req.enabled)
+
+
+@router.post("/session/break")
+def session_break():
+    return session_manager.get_manager().enter_break()
+
+
+@router.post("/session/break/end")
+def session_resume():
+    return session_manager.get_manager().leave_break()
+
+
+@router.post("/session/ready")
+def session_ready():
+    """Wizard step 4: if still calibrating, enter monitoring. 20s grace remains fallback."""
+    return session_manager.get_manager().ready()
+
+
+@router.get("/session/timeline")
+def session_timeline(minutes: int = 10, session_id: Optional[str] = None):
+    """Risk-level strip for the current or last session. Empty buckets if shorter than `minutes`."""
+    minutes = max(1, min(int(minutes or 10), 60))
+    mgr = session_manager.get_manager()
+    sid = session_id or mgr.session_id or mgr.last_session_id
+    if not sid:
+        raise HTTPException(status_code=404, detail="No session to chart yet")
+    result = insight_service.build_session_timeline(sid, minutes=minutes, bucket_sec=10)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return result
+
+
+@router.get("/session/report")
+def session_report(session_id: Optional[str] = None):
+    """Printable session report from stored insight stats + last advice. Does not call the LLM again."""
+    mgr = session_manager.get_manager()
+    sid = session_id or mgr.session_id or mgr.last_session_id
+    if not sid:
+        raise HTTPException(status_code=404, detail="No session to report yet")
+    result = insight_service.build_session_report(config.DEFAULT_DEVICE_ID, sid)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return result
 
 
 @router.post("/calibrate/head-pose")
@@ -206,20 +316,14 @@ class TrackingStartRequest(BaseModel):
 
 @router.post("/tracking/start")
 def start_tracking_api(req: TrackingStartRequest):
-    """Launch the Python AI tracking process for the specified camera source when user starts camera on Web UI."""
-    success = tracking_manager.start_tracking(source=req.source)
-    return {
-        "status": "ok" if success else "error",
-        "active": tracking_manager.is_tracking_active(),
-        "source": req.source,
-    }
+    """Start camera + open (or attach to) the device session."""
+    return session_manager.get_manager().start(source=req.source)
 
 
 @router.post("/tracking/stop")
 def stop_tracking_api():
-    """Stop the active Python AI tracking process when user stops camera on Web UI."""
-    tracking_manager.stop_tracking()
-    return {"status": "ok", "active": False}
+    """Stop Stream = Stop Session: close the row, generate insight, LED off."""
+    return session_manager.get_manager().stop()
 
 
 from fastapi.responses import StreamingResponse

@@ -9,11 +9,46 @@ echo ""
 echo "PostureCare gPBL — local demo"
 echo ""
 
-command -v python3 >/dev/null || { echo "Python 3 not found."; exit 1; }
+# Prefer 3.12 → 3.11 → 3.10. Allow 3.13 if nothing else exists (no MediaPipe here).
+resolve_python_soft() {
+  local cmd ver
+  for cmd in python3.12 python3.11 python3.10; do
+    if command -v "$cmd" >/dev/null 2>&1; then
+      printf '%s' "$cmd"
+      return 0
+    fi
+  done
+  for cmd in python3.13 python3; do
+    if command -v "$cmd" >/dev/null 2>&1; then
+      ver="$("$cmd" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || true)"
+      case "$ver" in
+        3.1[0-9]|3.[2-9][0-9])
+          printf '%s' "$cmd"
+          return 0
+          ;;
+      esac
+      echo "Python $ver is too old. Dashboard needs Python 3.10+ (3.13 allowed here)." >&2
+      echo "Install Python 3.11 (recommended):" >&2
+      echo "  macOS:  brew install python@3.11" >&2
+      echo "  Linux:  sudo apt install python3.11 python3.11-venv" >&2
+      exit 1
+    fi
+  done
+  echo "Python 3.10+ not found. Install Python 3.11 (recommended)." >&2
+  echo "  macOS:  brew install python@3.11" >&2
+  echo "  Linux:  sudo apt install python3.11 python3.11-venv" >&2
+  exit 1
+}
+
+PYTHON_CMD="$(resolve_python_soft)"
 
 echo ">> Creating virtualenv if needed..."
+if [[ -d .venv && ! -f .venv/pyvenv.cfg ]]; then
+  echo "   Broken venv — recreating once" >&2
+  rm -rf .venv
+fi
 if [[ ! -d .venv ]]; then
-  python3 -m venv .venv
+  "$PYTHON_CMD" -m venv .venv
 fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
@@ -24,7 +59,16 @@ pip install -q --upgrade pip
 pip install -q -r requirements.txt
 
 echo ">> Checking config files..."
+if [[ ! -f .env.example ]]; then
+  echo "MISSING: $BACKEND/.env.example" >&2
+  exit 1
+fi
 [[ -f .env ]] || cp .env.example .env
+
+if [[ ! -f data/rules.json.example ]]; then
+  echo "MISSING: $BACKEND/data/rules.json.example" >&2
+  exit 1
+fi
 mkdir -p data
 [[ -f data/rules.json ]] || cp data/rules.json.example data/rules.json
 

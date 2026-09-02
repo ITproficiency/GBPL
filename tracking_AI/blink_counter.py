@@ -41,7 +41,7 @@ class FirebaseSyncWorker:
             "head_pose_thresholds": {
                 "pitch_down_max_deg": 5.0,
                 "pitch_up_max_deg": 5.0,
-                "roll_max_deg": 10.0,
+                "roll_max_deg": 15.0,
                 "yaw_max_deg": 20.0,
                 "distance_min_cm": 40.0
             },

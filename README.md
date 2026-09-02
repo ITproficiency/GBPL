@@ -110,6 +110,8 @@ gpbl/
 │   ├── run.bat                 # Windows batch launcher
 │   └── README.md               # Dashboard specific guide
 │
+├── run.sh                      # Root macOS/Linux launcher (dashboard + tracking)
+├── run.ps1                     # Root Windows launcher (dashboard + tracking)
 ├── platformio.ini              # Root PlatformIO workspace configuration
 └── README.md                   # Main project documentation (this file)
 ```
@@ -134,6 +136,12 @@ gpbl/
 
 ## 🚀 Quick Start Guide
 
+**Python 3.10–3.12** is required for the tracking stack (MediaPipe). **3.11 is recommended.** Python 3.13 is not supported for `tracking_AI`.
+
+From the repo root, `./run.sh` (macOS / Linux) or `.\run.ps1` (Windows) creates two venvs, bootstraps missing config, starts the dashboard, then launches tracking. That is the supported path after `git clone`.
+
+**macOS Camera:** grant Camera access to the **parent app** (Terminal, iTerm, VS Code, or Cursor) under System Settings → Privacy & Security → Camera. If access is denied, tracking stays up with a “CONNECTING…” placeholder; it does not exit.
+
 ### Step 1: Flash Firmware to ESP32-S3
 
 1. Open the project in VS Code with the **PlatformIO** extension.
@@ -150,47 +158,33 @@ gpbl/
 
 ---
 
-### Step 2: Run AI Tracking Module
+### Step 2: Run dashboard + AI tracking (repo root)
 
-1. Navigate to the `tracking_AI` folder and install dependencies:
-   ```bash
-   cd tracking_AI
-   pip install -r requirements.txt
-   ```
-2. Open [tracking_AI/blink_counter_and_EAR_plot.py](file:///d:/Documents/PlatformIO/Projects/gpbl/tracking_AI/blink_counter_and_EAR_plot.py) and ensure `input_video_path` points to your video stream (or `0` for local USB webcam):
-   ```python
-   input_video_path = "http://192.168.1.50:81/stream"  # Or 0 for local webcam
-   ```
-3. Launch the tracking application:
-   ```bash
-   python blink_counter_and_EAR_plot.py
-   ```
-   - Press **`c`** to calibrate baseline head pose (0°) and eye distance.
-   - Press **`p`** to quit.
+Prefer the root launcher (venv + config + FastAPI + tracking). Do not `pip install` globally.
+
+**Windows (PowerShell):**
+```powershell
+.\run.ps1
+```
+
+**macOS / Linux:**
+```bash
+chmod +x run.sh && ./run.sh
+```
+
+Optional camera argument (default `0`): `./run.sh 0` or `.\run.ps1 0`. For an ESP32 MJPEG URL, pass it as the first argument.
+
+- Press **`c`** to calibrate baseline head pose (0°) and eye distance.
+- Press **`p`** to quit tracking (the dashboard process is then stopped).
 
 ---
 
-### Step 3: Run PostureCare Web Dashboard
+### Step 3: Dashboard-only (optional)
 
-1. Navigate to the `dashboard/gPBL` folder:
-   ```bash
-   cd dashboard/gPBL
-   ```
-2. Setup authentication files:
-   - Copy `backend/serviceAccountKey.json.example` to `backend/serviceAccountKey.json` (or supply your Firebase Admin service account key).
-   - Copy `backend/.env.example` to `backend/.env` and configure your `OPENROUTER_API_KEY` (optional).
-3. Start the application:
-   - **Windows**:
-     ```powershell
-     .\run.ps1
-     ```
-   - **Linux / macOS**:
-     ```bash
-     chmod +x run.sh && ./run.sh
-     ```
-4. Open your browser:
-   - **Dashboard**: [http://localhost:8080/dashboard](http://localhost:8080/dashboard)
-   - **Interactive API Docs**: [http://localhost:8080/docs](http://localhost:8080/docs)
+If you only need the web UI, use the nested scripts in `dashboard/gPBL/` (Python 3.13 is allowed here; no MediaPipe). You still need `backend/serviceAccountKey.json` (copy from the `.example` or a Firebase Admin key). Root scripts copy `.env` and `data/rules.json` from examples when missing; they will not invent a fake service-account key.
+
+- **Dashboard**: [http://localhost:8080/dashboard](http://localhost:8080/dashboard)
+- **Interactive API Docs**: [http://localhost:8080/docs](http://localhost:8080/docs)
 
 ---
 
@@ -216,7 +210,7 @@ gpbl/
 ## 🛠 Tech Stack
 
 - **Firmware**: C++ (Arduino Framework, ESP-IDF Camera Driver, PlatformIO, Firebase-ESP-Client)
-- **Computer Vision**: Python 3.10+, OpenCV, MediaPipe Face Mesh, NumPy, Matplotlib
+- **Computer Vision**: Python 3.10–3.12 (3.11 recommended), OpenCV, MediaPipe Face Mesh, NumPy, Matplotlib
 - **Backend**: FastAPI, Uvicorn, Pydantic, Firebase Admin SDK, OpenRouter AI API
 - **Frontend**: Vanilla HTML5, Modern Responsive CSS3 (Glassmorphism & Dark UI), Canvas 2D/3D Rendering, Web Audio API
 

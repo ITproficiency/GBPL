@@ -356,10 +356,16 @@ function truncateForSpeech(text, maxChars = 220) {
 
 function speak(text) {
   if (!settings.voiceEnabled || !("speechSynthesis" in window) || !text) return;
-  window.speechSynthesis.cancel(); // avoid queueing multiple reminders back-to-back
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.volume = settings.voiceVolume;
-  window.speechSynthesis.speak(utter);
+  if (window.speechSynthesis.speaking) return; // drop — do not cancel a line in progress
+  try {
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = "en-US";
+    const vol = Number(settings.voiceVolume);
+    utter.volume = Number.isFinite(vol) ? Math.min(1, Math.max(0, vol)) : 1;
+    window.speechSynthesis.speak(utter);
+  } catch {
+    // TTS is optional; never block monitoring or dashboard entry.
+  }
 }
 
 focusEls.voiceEnabledInput.addEventListener("change", () => {
@@ -404,10 +410,9 @@ function notifyRiskHigh(data) {
   const now = Date.now();
   if (now - lastRiskAlertAt < RISK_ALERT_COOLDOWN_MS) return;
   lastRiskAlertAt = now;
-  const message = (data.warning_messages || []).join(". ");
+  const message = data.spoken_line || data.toast || "Posture needs attention.";
   playTone(220, 250);
-  notify("Posture risk high", message);
-  speak(truncateForSpeech("Posture risk is high. " + message));
+  notify("Posture alert", message);
 }
 
 /* ---------------- Tasks ---------------- */
@@ -600,21 +605,7 @@ async function onFocusComplete() {
   incrementActiveTaskPomodoro();
   playTone(880, 300);
   setTimeout(() => playTone(1046, 300), 350);
-  notify("Focus session complete", "Generating your session insight...");
-
-  try {
-    const res = await fetch(`/api/insights?window_minutes=${settings.focusMinutes}`, { method: "POST" });
-    const data = await res.json();
-    if (res.ok) {
-      fetchInsight();
-      const summary = data.advice?.summary || "";
-      notify("Session insight ready", summary.slice(0, 150));
-      speak(truncateForSpeech(summary));
-    }
-  } catch {
-    // Insight generation is best-effort — the focus/break cycle continues regardless.
-  }
-
+  notify("Focus session complete", "Time for a break.");
   startBreak();
 }
 
@@ -622,6 +613,7 @@ function onBreakComplete() {
   clearInterval(focusTimer.timerId);
   playTone(660, 400);
   notify("Break over", "Ready for another focus session?");
+  syncSessionBreak(false);
   focusTimer.mode = "idle";
   focusTimer.remainingSec = 0;
   focusTimer.totalSec = 0;
@@ -629,9 +621,18 @@ function onBreakComplete() {
   setFocusButtons("idle");
 }
 
+async function syncSessionBreak(enter) {
+  try {
+    await fetch(enter ? "/api/session/break" : "/api/session/break/end", { method: "POST" });
+  } catch {
+    // Session sync is best-effort; the timer still runs locally.
+  }
+}
+
 function startFocus() {
   requestNotificationPermission();
   if (settings.ambientSound !== "none") startAmbient(settings.ambientSound);
+  syncSessionBreak(false);
   focusTimer.mode = "focus";
   focusTimer.totalSec = settings.focusMinutes * 60;
   focusTimer.remainingSec = focusTimer.totalSec;
@@ -641,6 +642,7 @@ function startFocus() {
 }
 
 function startBreak() {
+  syncSessionBreak(true);
   focusTimer.mode = "break";
   focusTimer.totalSec = settings.breakMinutes * 60;
   focusTimer.remainingSec = focusTimer.totalSec;
@@ -650,6 +652,7 @@ function startBreak() {
 }
 
 function resetFocus() {
+  if (focusTimer.mode === "break") syncSessionBreak(false);
   clearInterval(focusTimer.timerId);
   focusTimer.mode = "idle";
   focusTimer.remainingSec = 0;

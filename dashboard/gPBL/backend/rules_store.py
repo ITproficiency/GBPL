@@ -29,3 +29,16 @@ def update_cooldowns(analyze_cooldown_sec: int, insight_cooldown_sec: int) -> di
     data.setdefault("insight", {})["cooldown_sec"] = insight_cooldown_sec
     RULES_PATH.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
     return data
+
+
+def update_sitting_demo(demo_mode: bool, demo_max_minutes: int | None = None) -> dict:
+    """Persist the demo sitting threshold toggle. Does not touch too_long or risk_score."""
+    data = get_rules()
+    sitting = data.setdefault("sitting_minutes", {})
+    sitting["demo_mode"] = bool(demo_mode)
+    if demo_max_minutes is not None:
+        sitting["demo_max_minutes"] = int(demo_max_minutes)
+    elif sitting.get("demo_max_minutes") is None:
+        sitting["demo_max_minutes"] = 3
+    RULES_PATH.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    return data

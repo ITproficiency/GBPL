@@ -115,6 +115,7 @@ void setup() {
 
   // Initialize Firebase Realtime Database
   init_firebase();
+  ensure_led_schema();
 
   startCameraServer();
 
@@ -124,30 +125,40 @@ void setup() {
 }
 
 void loop() {
+  static unsigned long last_sensor_ms = 0;
+  const unsigned long SENSOR_INTERVAL_MS = 2000;
+
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("[WiFi] Disconnected. Reconnecting...");
     WiFi.disconnect();
     WiFi.begin(ssid, password);
+    apply_led_state_from_firebase();
     delay(2000);
     return;
   }
 
-  // Read sensor data (LDR and Ultrasonic)
-  int lightADC = read_light_adc();
-  float lux = read_lux();
-  float distance = read_distance();
+  // Token may not be ready at the end of setup(); this is a no-op once done.
+  ensure_led_schema();
+  apply_led_state_from_firebase();
 
-  Serial.println("----------------------------------------");
-  Serial.printf("Light ADC : %d | Lux : %.2f lux\n", lightADC, lux);
-  if (distance < 0) {
-    Serial.println("Distance  : No echo");
-  } else {
-    Serial.printf("Distance  : %.2f cm\n", distance);
+  unsigned long now = millis();
+  if (last_sensor_ms == 0 || (now - last_sensor_ms) >= SENSOR_INTERVAL_MS) {
+    last_sensor_ms = now;
+
+    int lightADC = read_light_adc();
+    float lux = read_lux();
+    float distance = read_distance();
+
+    Serial.println("----------------------------------------");
+    Serial.printf("Light ADC : %d | Lux : %.2f lux\n", lightADC, lux);
+    if (distance < 0) {
+      Serial.println("Distance  : No echo");
+    } else {
+      Serial.printf("Distance  : %.2f cm\n", distance);
+    }
+
+    upload_sensor_data_to_firebase(lightADC, lux, distance);
   }
 
-  // Upload sensor data to Firebase Realtime Database
-  upload_sensor_data_to_firebase(lightADC, lux, distance);
-
-  // Wait 2 seconds between sensor readings
-  delay(2000);
+  delay(20);
 }

@@ -10,6 +10,8 @@
 
 # Environment & System
 myenv/
+.venv/
+**/.venv/
 .DS_Store
 *.pyc
 __pycache__/

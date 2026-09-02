@@ -3,8 +3,10 @@
 Real-time ergonomic health & posture monitoring web dashboard with intelligent LLM insights powered by FastAPI, Firebase Realtime Database, and OpenRouter.
 
 ```
-git clone → configure secrets → .\run.ps1
+git clone → configure secrets → repo-root .\run.ps1 / ./run.sh
 ```
+
+For the full stack (dashboard + tracking), use the **repo-root** scripts. This folder’s `run.ps1` / `run.sh` start the dashboard only.
 
 ## 🚀 Quick Start
 
@@ -44,5 +46,5 @@ If `OPENROUTER_API_KEY` is not provided or left as default, the backend operates
 
 ## 📋 Requirements
 
-- Python 3.11+
+- Python 3.10+ for dashboard-only (3.13 allowed here). Full stack with MediaPipe tracking needs **Python 3.10–3.12** via the repo-root `./run.sh` / `.\run.ps1`.
 - Internet access (for Firebase RTDB & OpenRouter API)
