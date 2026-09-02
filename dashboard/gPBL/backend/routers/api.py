@@ -24,6 +24,25 @@ MAX_COOLDOWN_SEC = 600
 _last_analyze_at: float = 0
 _last_insight_at: float = 0
 
+# #region agent log
+_DEBUG_LOG = Path(r"d:\Workspace\GBPL\debug-246fd2.log")
+
+@router.post("/debug-client-log")
+def debug_client_log(payload: dict = Body(default=None)):
+    """Debug ingest fallback so browser logs land on disk if the debug proxy is down."""
+    try:
+        import json as _json
+        import time as _time
+        row = payload if isinstance(payload, dict) else {"payload": payload}
+        row.setdefault("sessionId", "246fd2")
+        row.setdefault("timestamp", int(_time.time() * 1000))
+        with _DEBUG_LOG.open("a", encoding="utf-8") as _f:
+            _f.write(_json.dumps(row, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+    return {"ok": True}
+# #endregion
+
 SOUNDS_DIR = Path(__file__).resolve().parent.parent / "static" / "sounds"
 SOUND_EXTENSIONS = {".mp3", ".ogg", ".wav", ".m4a"}
 
@@ -61,6 +80,7 @@ def get_rules():
         "insight_min_readings": config.INSIGHT_MIN_READINGS,
         "analyze_cooldown_sec": _analyze_cooldown_sec(),
         "insight_cooldown_sec": _insight_cooldown_sec(),
+        "light_calibration": _light_calibration_public(rules),
     }
 
 
@@ -78,6 +98,79 @@ def update_cooldowns(settings: CooldownSettings):
         "analyze_cooldown_sec": settings.analyze_cooldown_sec,
         "insight_cooldown_sec": settings.insight_cooldown_sec,
     }
+
+
+def _light_calibration_public(rules: dict | None = None) -> dict:
+    """Calibration plus the numbers it implies, so the dashboard can show the
+    measurable window and whether the fit is physically plausible."""
+    rules = rules or processing.get_rules()
+    cfg = rules.get("light_adc") or {}
+    calib = cfg.get("calibration") or {}
+    low, high = calib.get("low") or {}, calib.get("high") or {}
+    gamma = processing.fitted_gamma(cfg)
+
+    def _lux(adc_key):
+        adc = cfg.get(adc_key)
+        if adc is None:
+            return None
+        lux, _ = processing.adc_to_lux(float(adc), cfg)
+        return round(lux, 1) if lux is not None else None
+
+    return {
+        "adc_max": cfg.get("adc_max"),
+        "adc_dark_floor": cfg.get("adc_dark_floor"),
+        "adc_linear_max": cfg.get("adc_linear_max"),
+        "adc_saturation": cfg.get("adc_saturation"),
+        "r_fixed_ohm": cfg.get("r_fixed_ohm"),
+        "circuit": cfg.get("circuit"),
+        "low_adc": low.get("adc"),
+        "low_lux": low.get("lux"),
+        "high_adc": high.get("adc"),
+        "high_lux": high.get("lux"),
+        "source": calib.get("source"),
+        "fitted_gamma": gamma,
+        "gamma_plausible": (gamma is not None and 0.4 <= gamma <= 1.0),
+        "lux_at_linear_max": _lux("adc_linear_max"),
+        "lux_at_saturation": _lux("adc_saturation"),
+    }
+
+
+@router.get("/settings/light-calibration")
+def get_light_calibration():
+    return _light_calibration_public()
+
+
+class LightCalibration(BaseModel):
+    low_adc: int | None = Field(default=None, ge=0, le=65535)
+    low_lux: float | None = Field(default=None, gt=0, le=200000)
+    high_adc: int | None = Field(default=None, ge=0, le=65535)
+    high_lux: float | None = Field(default=None, gt=0, le=200000)
+    adc_max: int | None = Field(default=None, ge=255, le=65535)
+    adc_dark_floor: int | None = Field(default=None, ge=0, le=65535)
+    adc_linear_max: int | None = Field(default=None, ge=1, le=65535)
+    adc_saturation: int | None = Field(default=None, ge=1, le=65535)
+    r_fixed_ohm: int | None = Field(default=None, ge=1, le=10_000_000)
+    circuit: str | None = None
+    source: str | None = None
+
+
+@router.put("/settings/light-calibration")
+def update_light_calibration(settings: LightCalibration):
+    """Re-measure the LDR without a redeploy. The two anchor points are the
+    part that actually needs changing once real hardware is available."""
+    patch = settings.model_dump(exclude_none=True)
+    if not patch:
+        raise HTTPException(status_code=400, detail="No calibration fields supplied")
+    if (patch.get("low_adc") is None) != (patch.get("low_lux") is None):
+        raise HTTPException(status_code=400, detail="low_adc and low_lux must be set together")
+    if (patch.get("high_adc") is None) != (patch.get("high_lux") is None):
+        raise HTTPException(status_code=400, detail="high_adc and high_lux must be set together")
+
+    rules = rules_store.update_light_calibration(patch)
+    result = _light_calibration_public(rules)
+    if processing.lux_fit(rules.get("light_adc") or {}) is None:
+        raise HTTPException(status_code=400, detail="Calibration points do not define a usable fit")
+    return result
 
 
 class SittingDemoSettings(BaseModel):

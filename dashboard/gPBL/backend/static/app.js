@@ -508,6 +508,8 @@ function saveGuidedDismiss(rec) {
 }
 
 function shouldShowGuidedOverlay(session) {
+  const state = String(session && session.state || "").toLowerCase();
+  if (["monitoring", "away", "break"].includes(state)) return false;
   const rec = loadGuidedDismiss();
   const sid = session && session.session_id;
   if (sid && rec.dismissedSessionId === sid) return false;
@@ -644,7 +646,14 @@ function renderSensor(data, session) {
   if (els.earValue) els.earValue.textContent = data.ear != null ? Number(data.ear).toFixed(3) : "--";
   if (els.earThreshold) els.earThreshold.textContent = data.ear_threshold != null ? Number(data.ear_threshold).toFixed(3) : "0.294";
   if (els.blinkRate) els.blinkRate.textContent = data.blink_rate_bpm != null ? Number(data.blink_rate_bpm).toFixed(1) : "--";
-  if (els.brightness) els.brightness.textContent = data.brightness_lux != null ? Math.round(data.brightness_lux) : "--";
+  if (els.brightness) {
+    // A saturated LDR is censored, not measured — show it as a bound so a
+    // pegged sensor never reads as an ordinary value.
+    const luxPrefix =
+      data.light_status === "above_range" ? "≥" : data.light_status === "below_range" ? "≤" : "";
+    els.brightness.textContent =
+      data.brightness_lux != null ? luxPrefix + Math.round(data.brightness_lux) : "--";
+  }
   if (els.sittingMinutes) els.sittingMinutes.textContent = data.sitting_minutes ?? "--";
   if (els.headPose) els.headPose.textContent = formatHeadPose(data.head_pitch_deg, data.head_roll_deg, data.head_yaw_deg);
 
@@ -765,7 +774,7 @@ function renderSensor(data, session) {
   lastAdviceMode = hasIssue ? "advice" : "explain";
   if (els.analyzeBtn) {
     els.analyzeBtn.textContent = hasIssue ? "Get Advice" : "Explain current state";
-    els.analyzeBtn.disabled = false;
+    if (!analyzeInFlight) els.analyzeBtn.disabled = false;
   }
 
   // Ungated: reminders do not depend on Pomodoro focus mode.
@@ -805,6 +814,108 @@ function renderSensor(data, session) {
   }
 }
 
+/* ---------------- Light sensor calibration ---------------- */
+
+const lightCalibEls = {
+  circuit: document.getElementById("lightCircuitInput"),
+  rFixed: document.getElementById("lightRFixedInput"),
+  lowAdc: document.getElementById("lightLowAdcInput"),
+  lowLux: document.getElementById("lightLowLuxInput"),
+  highAdc: document.getElementById("lightHighAdcInput"),
+  highLux: document.getElementById("lightHighLuxInput"),
+  sat: document.getElementById("lightSatInput"),
+  gamma: document.getElementById("lightGammaValue"),
+  linear: document.getElementById("lightLinearValue"),
+  ceiling: document.getElementById("lightCeilingValue"),
+  hint: document.getElementById("lightGammaHint"),
+  save: document.getElementById("lightCalibSaveBtn"),
+  status: document.getElementById("lightCalibStatus"),
+};
+
+function setIfIdle(el, value) {
+  // Never overwrite a field the user is mid-edit in — /api/rules is polled.
+  if (!el || el === document.activeElement || value == null) return;
+  el.value = value;
+}
+
+function applyLightCalibration(cal) {
+  if (!cal) return;
+  setIfIdle(lightCalibEls.circuit, cal.circuit);
+  setIfIdle(lightCalibEls.rFixed, cal.r_fixed_ohm);
+  setIfIdle(lightCalibEls.lowAdc, cal.low_adc);
+  setIfIdle(lightCalibEls.lowLux, cal.low_lux);
+  setIfIdle(lightCalibEls.highAdc, cal.high_adc);
+  setIfIdle(lightCalibEls.highLux, cal.high_lux);
+  setIfIdle(lightCalibEls.sat, cal.adc_saturation);
+
+  if (lightCalibEls.gamma) {
+    lightCalibEls.gamma.textContent = cal.fitted_gamma != null ? cal.fitted_gamma.toFixed(2) : "--";
+    lightCalibEls.gamma.className = "calib-stat-v" + (cal.fitted_gamma != null && !cal.gamma_plausible ? " bad" : "");
+  }
+  if (lightCalibEls.linear) {
+    lightCalibEls.linear.textContent =
+      cal.lux_at_linear_max != null ? Math.round(cal.lux_at_linear_max) + " lx" : "--";
+  }
+  if (lightCalibEls.ceiling) {
+    lightCalibEls.ceiling.textContent =
+      cal.lux_at_saturation != null ? Math.round(cal.lux_at_saturation) + " lx" : "--";
+  }
+  if (lightCalibEls.hint) {
+    if (cal.fitted_gamma == null) {
+      lightCalibEls.hint.textContent = "No usable fit — check the two reference points.";
+    } else if (!cal.gamma_plausible) {
+      lightCalibEls.hint.textContent =
+        `γ = ${cal.fitted_gamma} is outside the 0.5–0.9 range of a CdS cell. The wiring or the fixed resistor is probably wrong.`;
+    } else {
+      const target = (pcRules.brightness_lux || {}).target_min;
+      const linear = cal.lux_at_linear_max;
+      lightCalibEls.hint.textContent =
+        target != null && linear != null && linear < target
+          ? `γ looks right, but the usable ceiling (${Math.round(linear)} lx) is below the ${target} lx target — the divider saturates before normal desk lighting.`
+          : "γ is within the range expected of a CdS cell.";
+    }
+  }
+}
+
+if (lightCalibEls.save) {
+  lightCalibEls.save.addEventListener("click", async () => {
+    const num = (el) => (el && el.value !== "" ? Number(el.value) : null);
+    const body = {
+      circuit: lightCalibEls.circuit ? lightCalibEls.circuit.value : undefined,
+      r_fixed_ohm: num(lightCalibEls.rFixed),
+      low_adc: num(lightCalibEls.lowAdc),
+      low_lux: num(lightCalibEls.lowLux),
+      high_adc: num(lightCalibEls.highAdc),
+      high_lux: num(lightCalibEls.highLux),
+      adc_saturation: num(lightCalibEls.sat),
+      source: "measured via dashboard",
+    };
+    Object.keys(body).forEach((k) => (body[k] == null) && delete body[k]);
+
+    lightCalibEls.save.disabled = true;
+    if (lightCalibEls.status) lightCalibEls.status.textContent = "Saving...";
+    try {
+      const res = await fetch("/api/settings/light-calibration", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (lightCalibEls.status) lightCalibEls.status.textContent = data.detail || "Couldn't save";
+      } else {
+        applyLightCalibration(data);
+        if (lightCalibEls.status) lightCalibEls.status.textContent = "Saved";
+        showToast("Light calibration saved.", true);
+        fetchSensor();
+      }
+    } catch (err) {
+      if (lightCalibEls.status) lightCalibEls.status.textContent = "Connection error";
+    }
+    lightCalibEls.save.disabled = false;
+  });
+}
+
 async function fetchRules() {
   const res = await fetch("/api/rules");
   if (!res.ok) return;
@@ -817,6 +928,7 @@ async function fetchRules() {
   }
 
   pcRules = rules;
+  applyLightCalibration(rules.light_calibration);
   if (els.sittingDemoInput) {
     els.sittingDemoInput.checked = isSittingDemoMode(rules, latestSession);
   }
@@ -887,7 +999,7 @@ async function fetchAdvice() {
 els.analyzeBtn.addEventListener("click", async () => {
   if (analyzeInFlight) return;
   analyzeInFlight = true;
-  els.analyzeBtn.disabled = false;
+  els.analyzeBtn.disabled = true;
   const mode = lastAdviceMode || "explain";
   els.analyzeStatus.textContent = mode === "explain" ? "Explaining..." : "Analyzing...";
   try {
@@ -1117,6 +1229,8 @@ if (connectCamBtn) {
   connectCamBtn.addEventListener("click", async () => {
     isManuallyStopped = false;
     if (isBrowserWebcamActive) stopBrowserWebcam();
+    isBrowserWebcamActive = false;
+    setWebcamToggleLabel();
     resetTrackingState();
     const url = streamUrlInput ? streamUrlInput.value.trim() : "";
     if (!url) {
@@ -1162,6 +1276,11 @@ function stopBrowserWebcam() {
   isBrowserWebcamActive = false;
 }
 
+function setWebcamToggleLabel() {
+  if (!toggleWebcamBtn) return;
+  toggleWebcamBtn.textContent = isBrowserWebcamActive ? "Switch to ESP32 Stream" : "Use Browser Webcam";
+}
+
 if (toggleWebcamBtn) {
   toggleWebcamBtn.addEventListener("click", async () => {
     isManuallyStopped = false;
@@ -1169,27 +1288,43 @@ if (toggleWebcamBtn) {
     try { await fetch("/api/tracking/stop", { method: "POST" }); } catch (e) {}
     if (isBrowserWebcamActive) {
       isBrowserWebcamActive = false;
-      toggleWebcamBtn.textContent = "Use Local Webcam";
-      const url = streamUrlInput ? streamUrlInput.value.trim() : "http://192.168.1.39:80/stream";
+      setWebcamToggleLabel();
+      const url = streamUrlInput ? streamUrlInput.value.trim() : "";
+      if (!url) {
+        updateAIStatusUI("failed", "ESP32-CAM", "Enter the ESP32 stream URL first.");
+        if (cameraStatus) {
+          cameraStatus.textContent = "NO STREAM URL";
+          cameraStatus.style.color = "#f87171";
+        }
+        return;
+      }
       updateAIStatusUI("connecting", "ESP32-CAM (" + url.replace("http://", "") + ")");
       if (cameraStatus) {
         cameraStatus.textContent = "ESP32 STREAM";
         cameraStatus.style.color = "#60a5fa";
       }
       try {
-        await fetch("/api/tracking/start", {
+        const res = await fetch("/api/tracking/start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ source: url }),
         });
-        if (cameraStreamImg) {
+        const data = await res.json();
+        if (data.session) renderSessionBadge(data.session);
+        if (data.status === "ok" && cameraStreamImg) {
           cameraStreamImg.src = "/api/video_feed?" + Date.now();
           cameraStreamImg.style.display = "block";
+          if (camFallbackOverlay) camFallbackOverlay.style.display = "none";
+          updateAIStatusUI("running", "ESP32-CAM (" + url.replace("http://", "") + ")");
+        } else {
+          updateAIStatusUI("failed", "ESP32-CAM (" + url.replace("http://", "") + ")", data.error);
         }
-      } catch (e) {}
+      } catch (e) {
+        updateAIStatusUI("failed", "ESP32-CAM");
+      }
     } else {
       isBrowserWebcamActive = true;
-      toggleWebcamBtn.textContent = "Switch to ESP32 Stream";
+      setWebcamToggleLabel();
       if (cameraStatus) {
         cameraStatus.textContent = "LOCAL WEBCAM (DEVICE 0)";
         cameraStatus.style.color = "#34d399";
@@ -1208,8 +1343,14 @@ if (toggleWebcamBtn) {
           cameraStreamImg.style.display = "block";
           if (camFallbackOverlay) camFallbackOverlay.style.display = "none";
           updateAIStatusUI("running", "Local Webcam (Device 0)");
+        } else {
+          isBrowserWebcamActive = false;
+          setWebcamToggleLabel();
+          updateAIStatusUI("failed", "Local Webcam (Device 0)", data.error);
         }
       } catch (err) {
+        isBrowserWebcamActive = false;
+        setWebcamToggleLabel();
         alert("Could not start local webcam tracking: " + err.message);
         updateAIStatusUI("failed", "Local Webcam (Device 0)");
       }
@@ -1232,7 +1373,8 @@ if (stopCamBtn) {
       cameraStatus.textContent = "OFFLINE";
       cameraStatus.style.color = "#f87171";
     }
-    if (toggleWebcamBtn) toggleWebcamBtn.textContent = "Use Browser Webcam";
+    isBrowserWebcamActive = false;
+    setWebcamToggleLabel();
     updateAIStatusUI("idle", "None");
     try {
       const res = await fetch("/api/tracking/stop", { method: "POST" });
@@ -1279,15 +1421,25 @@ if (camFullscreenBtn && cameraFeedContainer) {
   });
 }
 
+function getActiveCameraElement() {
+  const videoReady = browserWebcamVideo && browserWebcamVideo.style.display !== "none" && browserWebcamVideo.videoWidth > 0;
+  if (videoReady) return browserWebcamVideo;
+  return cameraStreamImg;
+}
+
 if (camSnapshotBtn) {
   camSnapshotBtn.addEventListener("click", () => {
-    const activeEl = isBrowserWebcamActive ? browserWebcamVideo : cameraStreamImg;
+    const activeEl = getActiveCameraElement();
     if (!activeEl) return;
 
     try {
       const canvas = document.createElement("canvas");
       canvas.width = activeEl.videoWidth || activeEl.naturalWidth || 640;
       canvas.height = activeEl.videoHeight || activeEl.naturalHeight || 480;
+      if (!canvas.width || !canvas.height) {
+        showToast("No camera frame to capture yet.", false);
+        return;
+      }
       const ctx = canvas.getContext("2d");
 
       if (isMirrored) {
@@ -1514,6 +1666,21 @@ function applySessionGovernor(session) {
   if (!session) return;
   renderSessionBadge(session);
   const advice = session.pending_advice;
+  // #region agent log
+  agentLog("D", "app.js:applySessionGovernor", "governor snapshot on UI", {
+    state: session.state,
+    severity: session.severity,
+    dnd: !!session.dnd,
+    voiceEnabled: typeof settings !== "undefined" ? !!settings.voiceEnabled : null,
+    flagSet: session.flag_set || [],
+    qualified: session.qualified_flags || [],
+    adviceId: advice && advice.id,
+    adviceSpeak: advice ? !!advice.speak : null,
+    adviceKind: advice && advice.kind,
+    lastPendingAdviceId,
+    skipSameId: !!(advice && advice.id && advice.id === lastPendingAdviceId),
+  });
+  // #endregion
   if (advice && advice.id && advice.id !== lastPendingAdviceId) {
     lastPendingAdviceId = advice.id;
     const actions = (advice.actions || []).map((id) => ({

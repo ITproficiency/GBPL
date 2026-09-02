@@ -37,17 +37,20 @@ The variables that can be measured depend strongly on camera position. A front-f
 \caption{Feasibility and Recommended Interpretation of Measurable Postural Variables}
 \label{tab:posture_variables_detail}
 \centering
-\begin{tabular}{|l|c|p{6.5cm}|}
-\hline
-\textbf{Posture Variable} & \textbf{Front-Camera Feasibility} & \textbf{Recommended Interpretation} \\ \hline
-Left--right shoulder-height difference & High & Shoulder-asymmetry indicator \\ \hline
-Lateral head tilt or roll & High & Deviation from an individual neutral baseline \\ \hline
-Head rotation or yaw & Moderate & Detect sustained rotation away from the screen \\ \hline
-Lateral trunk lean & Moderate to high & Upper-body asymmetry indicator (if torso is visible) \\ \hline
-Head position relative to shoulder midpoint & Moderate & Detect lateral displacement and large vertical changes \\ \hline
-Forward-head displacement & Limited & Use only as a calibrated proxy \\ \hline
-Neck flexion or head pitch & Limited to moderate & Estimate from facial orientation, not as a true cervical angle \\ \hline
-Trunk flexion or slouching & Limited & Use shoulder and face displacement as indirect indicators \\ \hline
+\small
+\begin{tabular}{@{}p{4.6cm}cp{5.6cm}@{}}
+\toprule
+\textbf{Posture Variable} & \textbf{Front-Camera Feasibility} & \textbf{Recommended Interpretation} \\
+\midrule
+Left--right shoulder-height difference & High & Shoulder-asymmetry indicator \\
+Lateral head tilt or roll & High & Deviation from an individual neutral baseline \\
+Head rotation or yaw & Moderate & Detect sustained rotation away from the screen \\
+Lateral trunk lean & Moderate to high & Upper-body asymmetry indicator (if torso is visible) \\
+Head position relative to shoulder midpoint & Moderate & Detect lateral displacement and large vertical changes \\
+Forward-head displacement & Limited & Use only as a calibrated proxy \\
+Neck flexion or head pitch & Limited to moderate & Estimate from facial orientation, not as a true cervical angle \\
+Trunk flexion or slouching & Limited & Use shoulder and face displacement as indirect indicators \\
+\bottomrule
 \end{tabular}
 \end{table}
 
@@ -87,19 +90,35 @@ Previous studies demonstrate the feasibility of monitoring computer-use ergonomi
 \caption{Comparison of Existing Ergonomic Monitoring Approaches and the Proposed PostureCare System}
 \label{tab:approach_comparison}
 \centering
-\begin{tabular}{|l|c|c|c|c|c|}
-\hline
-\textbf{Approach} & \textbf{Posture} & \textbf{Distance} & \textbf{Lighting} & \textbf{Duration} & \textbf{Personalized AI Feedback} \\ \hline
-Camera posture system & Yes & Usually no & No & Sometimes & Limited \\ \hline
-Wearable system & Yes & Usually no & No & Often & Limited \\ \hline
-Distance-only monitoring & No & Yes & No & Sometimes & No \\ \hline
-Smart chair / pressure sensing & Yes & No & No & Often & Sometimes \\ \hline
-\textbf{Proposed PostureCare system} & \textbf{Yes} & \textbf{Yes} & \textbf{Yes} & \textbf{Yes} & \textbf{Yes} \\ \hline
+\small
+\begin{tabular}{@{}lcccccccc@{}}
+\toprule
+& \multicolumn{5}{c}{\textbf{Sensing and feedback}} & \multicolumn{3}{c}{\textbf{Intervention management}} \\
+\cmidrule(lr){2-6} \cmidrule(l){7-9}
+\textbf{Approach} & \textbf{Post.} & \textbf{Dist.} & \textbf{Light} & \textbf{Dur.} & \textbf{AI fb.}
+& \textbf{Persist.} & \textbf{Notif.} & \textbf{Outcome} \\
+\midrule
+Camera posture system          & Yes & Usually no & No  & Sometimes & Limited   & No & No & No \\
+Wearable system                & Yes & Usually no & No  & Often     & Limited   & No & No & No \\
+Distance-only monitoring       & No  & Yes        & No  & Sometimes & No        & No & No & No \\
+Smart chair / pressure sensing & Yes & No         & No  & Often     & Sometimes & No & No & No \\
+\textbf{Proposed PostureCare}  & \textbf{Yes} & \textbf{Yes} & \textbf{Yes} & \textbf{Yes} & \textbf{Yes}
+& \textbf{Yes} & \textbf{Yes} & \textbf{Yes} \\
+\bottomrule
 \end{tabular}
+\par\medskip
+\footnotesize
+\begin{minipage}{0.95\linewidth}
+\textit{Persist.}: a detection must hold for a minimum duration before it is acted upon.
+\textit{Notif.}: deduplication, backoff, escalation, and user-controlled suppression.
+\textit{Outcome}: the system records whether a delivered recommendation was followed by a correction.
+\end{minipage}
 \end{table}
 
 PostureCare is positioned as an integrated early ergonomic-risk monitoring and feedback system. The RGB camera provides observable frontal-posture indicators, the distance sensor independently measures eye-to-screen proximity, the light sensor records environmental context, and time-series processing quantifies cumulative exposure. The LLM then converts these verified measurements into context-specific explanations and practical adjustment suggestions.
 
-The intended contribution is the integration and interpretation of several low-cost measurements rather than the invention of a new clinical diagnostic method. The proposed system addresses the limited integration of posture, viewing distance, visual behavior, lighting context, and exposure duration identified in previous work~\cite{ref4,ref5,ref6,ref7,ref8,ref9,ref10,ref12,ref14,ref15,ref16,ref17,ref19,ref20,ref21,ref22,ref23,ref24,ref25}.
+Two gaps therefore remain open, and the proposed system addresses both. The first is integration: no reviewed system combines postural, ocular, environmental and temporal channels on a single non-contact node. The second, visible in the rightmost columns of Table~\ref{tab:approach_comparison}, is intervention management. Every approach reviewed here acts on a detection as soon as it occurs, reports detection performance, and stops. None requires a detection to persist before acting on it, none bounds how often the same condition may interrupt the user, and none records whether a delivered recommendation was followed by a correction. Since repeated undifferentiated warnings are what lead users to disable ergonomic software, converting continuous detection into a bounded and measurable set of interventions is a distinct problem from sensing accurately, and it is where this work concentrates.
+
+The intended contribution is the integration and interpretation of several low-cost measurements, together with the mechanism that governs how those measurements reach the user, rather than the invention of a new clinical diagnostic method. The proposed system addresses the limited integration of posture, viewing distance, visual behavior, lighting context, and exposure duration identified in previous work~\cite{ref4,ref5,ref6,ref7,ref8,ref9,ref10,ref12,ref14,ref15,ref16,ref17,ref19,ref20,ref21,ref22,ref23,ref24,ref25}.
 
 

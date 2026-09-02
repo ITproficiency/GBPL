@@ -1,0 +1,77 @@
+\subsection{Summary}
+
+This work set out four design questions. The sensing arrangement of
+Section~\ref{subsec:hardware} captures postural, ocular, environmental and temporal indicators
+concurrently on a single non-contact node, with two independent channels for viewing distance
+(RQ1). Equations~\ref{eq:flags}--\ref{eq:severity} separate transient movement from sustained
+exposure through a per-flag hold time, and raise the severity tier when conditions co-occur (RQ2).
+The governor of Section~\ref{subsec:governor} converts qualified states into a bounded number of
+interventions through deduplication, backoff, escalation and user-controlled suppression (RQ3). The
+language model operates inside those bounds as an explanation layer, invoked only when the
+qualified flag set changes and constrained to the detected flags (RQ4).
+
+These are design answers, supported by an implementation rather than by measurement. They say
+nothing about how accurately the system senses, how well it discriminates ergonomic conditions, or
+whether its recommendations change behaviour. All three remain open until the protocol in
+Section~\ref{sec:protocol} is executed, and nothing in this paper should be read as evidence for
+them.
+
+\subsection{Comparison with Previous Studies}
+
+ERG-AI derives occupational posture from five body-worn accelerometers and generates health
+recommendations with a large language model~\cite{ref14}; SitWell classifies nineteen sitting
+postures from chair-embedded pressure mats and produces personalised feedback with
+GPT-4o~\cite{ref15}. Both demonstrate that sensing and language models can be combined
+productively, and both depend on hardware the user must wear or on a specific item of furniture.
+Camera-based systems such as PoseX avoid that dependency and reach useful classification accuracy
+after a short personal calibration~\cite{ref19}, but remain posture-centric.
+
+The present system differs in two respects. It combines postural, ocular, environmental and
+temporal channels on a single non-contact node, and it treats the decision of \emph{whether to
+interrupt} as a distinct problem with its own mechanism. In the systems above, an assessment leads
+directly to feedback; here, an assessment must first persist, then survive deduplication and
+backoff, before it is delivered. No superiority claim is made: the comparison is one of scope, and
+the accuracy comparisons that would justify a stronger statement have not been performed.
+
+\subsection{Why Multimodal Monitoring Matters}
+
+The same posture carries different implications depending on its context. A user with a raised head
+angle at an appropriate viewing distance, sustained briefly, is not in the same ergonomic situation
+as a user who simultaneously holds that angle, sits closer than $30\,\text{cm}$, works under
+inadequate lighting, and remains so for twenty minutes. A single-threshold system reports the same
+alert in both cases.
+
+Equation~\ref{eq:severity} operationalises this: two individually mild conditions occurring
+together raise the severity tier, which is a claim about combinations rather than about any single
+signal. Whether that distinction matters in practice --- that is, what proportion of interventions
+would arise from combinations rather than from any single threshold --- is measurable from session
+logs, and is one of the quantities the protocol in Section~\ref{sec:protocol} is designed to
+obtain. It has not been measured here.
+
+\subsection{Detection Is Not Intervention}
+
+Continuous monitoring produces far more detections than a person can usefully act on. A system that
+surfaces each one converts a health tool into a source of interruption, and the predictable
+consequence is that the user disables it --- at which point measurement accuracy no longer matters
+at all. This failure mode receives little attention in the ergonomic monitoring literature, which
+generally evaluates detection performance and stops there.
+
+The mechanisms in Section~\ref{subsec:governor} take a concrete position on it. Persistence
+filtering removes transient movements that are not exposures. Deduplication on the qualified flag
+set prevents an unchanged condition from generating repeated explanations. Backoff lengthens the
+interval when a reminder goes unheeded rather than repeating at fixed frequency, and escalation
+increases salience once, requiring acknowledgement, instead of increasing frequency indefinitely.
+Snooze and do-not-disturb give the user a proportionate response short of disabling the system
+entirely.
+
+Whether this produces better adherence than a simpler scheme is an empirical question that has not
+been tested here.
+
+\subsection{Practical Implications}
+
+The hardware is inexpensive, non-contact, and mounts on an ordinary monitor without modifying the
+workstation, which suits student, home-office and shared-desk settings where instrumented chairs or
+body-worn sensors are impractical. Because all thresholds, hold times and governor parameters are
+read from a single configuration file and are adjustable from the dashboard, the same deployment
+can be retuned for a different user or workspace without redeployment --- a practical requirement
+for any ergonomic tool intended to be used by more than one person.

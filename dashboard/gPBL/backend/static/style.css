@@ -1734,9 +1734,10 @@ footer {
 /* ---------------- Toast Notification ---------------- */
 .pc-toast {
   position: fixed;
-  bottom: 24px;
+  top: 72px;
+  bottom: auto;
   left: 50%;
-  transform: translateX(-50%) translateY(100px);
+  transform: translateX(-50%) translateY(-16px);
   background: rgba(15, 23, 42, 0.95);
   backdrop-filter: blur(12px);
   color: #f8fafc;
@@ -2189,5 +2190,105 @@ footer {
 }
 
 .guided-pane .focus-btn {
+  margin-top: 0.35rem;
+}
+
+/* ---------- Light sensor calibration (settings) ---------- */
+
+.settings-number,
+.settings-select {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-number {
+  width: 6.5rem;
+  text-align: right;
+}
+
+.settings-select {
+  max-width: 15rem;
+}
+
+.settings-number:focus-visible,
+.settings-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Reference points read as a table: label, the ADC seen, the lux it means. */
+.calib-grid {
+  display: grid;
+  grid-template-columns: 1fr 6.5rem 6.5rem;
+  gap: 0.4rem 0.5rem;
+  align-items: center;
+  margin: 0.5rem 0 0.9rem;
+}
+
+.calib-head {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.calib-head:not(:first-child) {
+  text-align: right;
+}
+
+.calib-label {
+  font-size: 0.8125rem;
+  color: var(--text);
+}
+
+.calib-grid .settings-number {
+  width: 100%;
+}
+
+/* Derived values — what the two points imply, so a bad fit is visible here
+   rather than only showing up as wrong lux on the dashboard. */
+.calib-readout {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  overflow: hidden;
+  margin: 0.75rem 0 0.35rem;
+}
+
+.calib-stat {
+  background: rgba(15, 23, 42, 0.6);
+  padding: 0.5rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.calib-stat-k {
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.calib-stat-v {
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.calib-stat-v.bad {
+  color: var(--danger, #f87171);
+}
+
+#lightCalibSaveBtn {
+  width: 100%;
   margin-top: 0.35rem;
 }

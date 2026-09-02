@@ -1043,10 +1043,9 @@ class BlinkCounterandEARPlot:
             elif isinstance(self.video_path, int):
                 # Webcam: use ThreadedVideoStream to avoid latency
                 cap = ThreadedVideoStream(self.video_path)
-                if not cap.isOpened():
-                    raise IOError(f"Failed to open video source: {self.video_path}")
-                cap.set(cv.CAP_PROP_FRAME_WIDTH, 1280)
-                cap.set(cv.CAP_PROP_FRAME_HEIGHT, 720)
+                if cap.stream is not None:
+                    cap.set(cv.CAP_PROP_FRAME_WIDTH, 1280)
+                    cap.set(cv.CAP_PROP_FRAME_HEIGHT, 720)
                 cap.start()
             else:
                 # Video file: use normal cv.VideoCapture to process all frames sequentially
@@ -1110,6 +1109,12 @@ class BlinkCounterandEARPlot:
                             cap.release()
                         if isinstance(self.video_path, str) and self.video_path.startswith("http"):
                             cap = ThreadedVideoStream(self.video_path)
+                            cap.start()
+                        elif isinstance(self.video_path, int):
+                            cap = ThreadedVideoStream(self.video_path)
+                            if cap.stream is not None:
+                                cap.set(cv.CAP_PROP_FRAME_WIDTH, 1280)
+                                cap.set(cv.CAP_PROP_FRAME_HEIGHT, 720)
                             cap.start()
                         else:
                             cap = cv.VideoCapture(self.video_path)

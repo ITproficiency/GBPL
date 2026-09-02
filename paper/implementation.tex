@@ -1,0 +1,93 @@
+This section describes the realised artifact: the components that implement the architecture of
+Section~\ref{sec:proposed_system}, and the technologies each is built on. It reports what exists,
+not how well it performs. \textbf{No integration testing across the complete pipeline and no
+evaluation have been carried out}; the protocol for the latter is given in
+Section~\ref{sec:protocol}, and the consequences for what may be claimed are stated in
+Section~\ref{sec:limitations}.
+
+\subsection{Component Structure}
+
+The system is implemented as the four deployable components listed in
+Table~\ref{tab:components}, communicating through a Firebase Realtime Database. The database
+decouples them: the edge node does not need to know whether a dashboard is connected, and the
+vision client and backend can be restarted independently of the hardware.
+
+\begin{table}[htbp]
+\centering
+\caption{Implemented components and their technologies}
+\label{tab:components}
+\begin{tabular}{@{}llp{6.2cm}@{}}
+\toprule
+\textbf{Component} & \textbf{Technology} & \textbf{Responsibility} \\
+\midrule
+Edge firmware
+& C++ / Arduino, PlatformIO
+& Camera streaming server, ultrasonic and photoresistor sampling, two-colour indicator driven from
+the database, publication of raw telemetry \\
+\addlinespace
+Vision client
+& Python, MediaPipe, OpenCV
+& Face mesh extraction, head pose by \texttt{solvePnP}, Eye Aspect Ratio and sliding-window blink
+rate, interpupillary distance estimate, per-flag persistence timers \\
+\addlinespace
+Backend service
+& Python, FastAPI, SQLite
+& Session state machine, flag detection and qualification, severity assignment, notification
+governor, LLM invocation, session history \\
+\addlinespace
+Dashboard
+& HTML, CSS, vanilla JavaScript
+& Live telemetry, guided calibration, notification surface with governor actions, calibration and
+threshold configuration \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Design Choices Worth Recording}
+
+Three implementation decisions follow from the architecture rather than from convenience, and are
+recorded here because they constrain how the system can be deployed and extended.
+
+\textbf{A single configuration source.} Every threshold, hold time, severity rule and governor
+parameter in Table~\ref{tab:parameters} is read from one configuration file on each request, and
+the calibration values are editable from the dashboard at runtime. This exists so that the values
+described in this paper are demonstrably the values the system uses, and so that a deployment can
+be retuned for a different user or workspace without redeployment.
+
+\textbf{The governor is the only writer of user-facing state.} Session persistence, indicator
+state, history, and LLM invocation are all driven from the session engine rather than from
+independent timers. Without this, a page reload or a second open dashboard would reset cooldowns
+and re-raise an alert the user had already dismissed --- the failure mode that makes notification
+management ineffective in practice.
+
+\textbf{Deterministic fallback for the recommendation layer.} When the language model is
+unreachable, a per-flag phrase table supplies the recommendation and the record is labelled with
+the fallback model name. This keeps the system usable offline, and it also means generated and
+templated output can later be compared directly on identical detected states, which is the basis
+of the comparison described in Section~\ref{sec:protocol}.
+
+\subsection{Illuminance Conversion}
+
+The photoresistor is sampled as a raw 12-bit value and converted to lux in the backend rather than
+on the device, so that the conversion has a single definition. Two properties of that conversion
+are worth stating because they bound what the illuminance channel can report.
+
+First, the divider is inverted to the photoresistor's own resistance in normalised form, in which
+the supply voltage cancels; supply voltage is therefore not a parameter, which removes a source of
+error given that the regulated rail is not exactly nominal.
+
+Second, the conversion is bounded at both ends. Above the point at which the analogue-to-digital
+converter saturates, the photoresistor still has finite resistance, so a saturated sample means
+``at least this bright'' rather than a specific value. The implementation returns a range status
+alongside the value and reports such samples as a lower bound. Treating saturation as zero
+illuminance --- which a naive divider inversion does, since it computes zero resistance at full
+scale --- would invert the reading and raise a low-light warning under the brightest conditions the
+sensor can register.
+
+\subsection{Status}
+
+All components described in Section~\ref{sec:proposed_system} are implemented, and the individual
+processing stages have been exercised during development. What has \emph{not} been done is
+end-to-end integration testing of the complete pipeline under realistic conditions, and no
+measurement of accuracy, latency, interruption load, or user outcome is reported anywhere in this
+paper. Establishing those is the immediate next step and is specified in Section~\ref{sec:protocol}.

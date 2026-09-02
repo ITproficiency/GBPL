@@ -8,6 +8,53 @@ from typing import Tuple, Union, Optional
 import urllib.request
 import ssl
 
+
+def _camera_permission_hint() -> str:
+    if sys.platform == "darwin":
+        return (
+            "On macOS, grant Camera access to the parent app "
+            "(Terminal / iTerm / VS Code / Cursor) under "
+            "System Settings → Privacy & Security → Camera."
+        )
+    if sys.platform == "win32":
+        return (
+            "On Windows, check Settings → Privacy & security → Camera "
+            "(allow desktop apps), close other apps using the webcam, "
+            "or try another camera index (e.g. .\\run.ps1 1)."
+        )
+    return "Check camera permissions and that no other app is using the device."
+
+
+def _open_local_capture(src):
+    """Open a local webcam; on Windows prefer DirectShow over MSMF."""
+    candidates = []
+    if sys.platform == "win32":
+        candidates = [(src, cv.CAP_DSHOW), (src, cv.CAP_MSMF), (src, 0)]
+    else:
+        candidates = [(src, 0)]
+
+    for index, backend in candidates:
+        cap = None
+        try:
+            cap = cv.VideoCapture(index, backend) if backend else cv.VideoCapture(index)
+            if not cap.isOpened():
+                cap.release()
+                continue
+            for _ in range(5):
+                grabbed, frame = cap.read()
+                if grabbed and frame is not None and getattr(frame, "size", 0) > 0:
+                    return cap, True
+                time.sleep(0.05)
+        except cv.error:
+            pass
+        if cap is not None:
+            try:
+                cap.release()
+            except Exception:
+                pass
+    return None, False
+
+
 class ThreadedVideoStream:
     """
     A threaded wrapper around cv2.VideoCapture / urllib HTTP MJPEG stream decoder.
@@ -25,17 +72,25 @@ class ThreadedVideoStream:
         self.urllib_resp = None
 
         if not self.is_network_stream:
-            self.stream = cv.VideoCapture(src)
-            self.grabbed, self.frame = self.stream.read()
-            if (not self.stream.isOpened()) or (not self.grabbed):
+            self.stream, self.grabbed = _open_local_capture(src)
+            self.frame = None
+            if self.stream is not None and self.grabbed:
+                _, self.frame = self.stream.read()
+            if self.stream is None or not self.grabbed or self.frame is None:
+                opened = self.stream is not None and self.stream.isOpened()
                 print(
                     "WARNING: Camera is unreadable "
-                    "(opened=%s, grabbed=%s). On macOS, grant Camera access "
-                    "to the parent app (Terminal / iTerm / VS Code / Cursor) "
-                    "under System Settings \u2192 Privacy & Security \u2192 Camera."
-                    % (self.stream.isOpened(), self.grabbed),
+                    f"(opened={opened}, grabbed={self.grabbed}). "
+                    f"{_camera_permission_hint()}",
                     file=sys.stderr,
                 )
+                if self.stream is not None:
+                    try:
+                        self.stream.release()
+                    except Exception:
+                        pass
+                    self.stream = None
+                self.grabbed = False
         else:
             self._init_network_stream()
 
@@ -60,9 +115,29 @@ class ThreadedVideoStream:
     def _update(self):
         if not self.is_network_stream:
             while not self.stopped:
-                if not self.stream or not self.stream.isOpened():
-                    break
-                grabbed, frame = self.stream.read()
+                if self.stream is None or not self.stream.isOpened():
+                    time.sleep(0.5)
+                    if self.stopped:
+                        break
+                    new_cap, ok = _open_local_capture(self.src)
+                    if ok and new_cap is not None:
+                        new_cap.set(cv.CAP_PROP_FRAME_WIDTH, 1280)
+                        new_cap.set(cv.CAP_PROP_FRAME_HEIGHT, 720)
+                        self.stream = new_cap
+                    continue
+                try:
+                    grabbed, frame = self.stream.read()
+                    if not grabbed or frame is None or getattr(frame, "size", 0) == 0:
+                        grabbed = False
+                        frame = None
+                except cv.error:
+                    grabbed = False
+                    frame = None
+                    try:
+                        self.stream.release()
+                    except Exception:
+                        pass
+                    self.stream = None
                 with self.lock:
                     self.grabbed = grabbed
                     self.frame = frame
@@ -105,7 +180,12 @@ class ThreadedVideoStream:
     def isOpened(self):
         if self.is_network_stream:
             return self.urllib_resp is not None or self.grabbed
-        return self.stream is not None and self.stream.isOpened() and not self.stopped
+        if self.stopped:
+            return False
+        with self.lock:
+            if self.grabbed and self.frame is not None:
+                return True
+        return self.stream is not None and self.stream.isOpened()
 
     def set(self, propId, value):
         if self.stream is not None:

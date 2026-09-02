@@ -7,6 +7,7 @@ Sitting time, persistence, LED, and LLM live in session_manager.
 
 from __future__ import annotations
 
+import math
 from datetime import datetime, timezone
 from typing import Any
 
@@ -32,47 +33,120 @@ def sanitize_distance(value: float | None) -> float | None:
     return value
 
 
-def adc_to_lux(adc_value: float, cfg: dict) -> float:
-    """Convert 12-bit LDR ADC reading to lux (see docs/light-adc-to-lux.md)."""
-    adc_max = float(cfg["adc_max"])
-    v_cc = float(cfg["v_cc"])
-    r_fixed = float(cfg["r_fixed_ohm"])
-    gamma = float(cfg["gamma"])
-    circuit = cfg.get("circuit", "ldr_to_vcc")
-
-    if adc_value <= 0 or adc_max <= 0:
-        return 0.0
-
-    v_out = v_cc * (adc_value / adc_max)
-    if v_out <= 0:
-        return 0.0
-
-    if circuit == "ldr_to_gnd":
-        if v_out >= v_cc:
-            return 0.0
-        r_ldr = r_fixed * (v_out / (v_cc - v_out))
-    else:
-        r_ldr = r_fixed * ((v_cc - v_out) / v_out)
-
-    if r_ldr <= 0:
-        return 0.0
-
-    return 10.0 * ((r_fixed / r_ldr) ** (1.0 / gamma))
+LUX_OK = "ok"
+LUX_BELOW_RANGE = "below_range"
+LUX_ABOVE_RANGE = "above_range"
+LUX_UNCALIBRATED = "uncalibrated"
 
 
-def resolve_brightness_lux(raw: dict, rules: dict) -> tuple[float | None, float | None]:
+def ldr_resistance(adc_value: float, cfg: dict) -> float | None:
+    """Invert the voltage divider to the LDR's own resistance.
+
+    Working in the normalised position x = adc/adc_max makes V_cc cancel out
+    exactly, so supply voltage is not a parameter here — which also removes a
+    false precision, since the ESP32's rail is not exactly 3.3 V anyway.
+    """
+    adc_max = float(cfg.get("adc_max", 4095))
+    r_fixed = float(cfg.get("r_fixed_ohm", 10000))
+    if adc_max <= 0 or r_fixed <= 0:
+        return None
+    x = min(max(adc_value / adc_max, 1e-6), 1.0 - 1e-6)
+    if cfg.get("circuit") == "ldr_to_gnd":
+        return r_fixed * (x / (1.0 - x))
+    return r_fixed * ((1.0 - x) / x)
+
+
+def lux_fit(cfg: dict) -> tuple[float, float] | None:
+    """Fit log10(lux) = a + b*log10(R_LDR) through the two calibration points.
+
+    A CdS cell is a straight line in log-log, so two measured points fully
+    determine it. Anchoring on measurements instead of a datasheet constant
+    also keeps the divider resistor out of the light model — the previous
+    version reused r_fixed as the LDR's resistance-at-10-lux, so changing the
+    divider silently changed the reported illuminance.
+    """
+    calib = cfg.get("calibration") or {}
+    low, high = calib.get("low"), calib.get("high")
+    if not isinstance(low, dict) or not isinstance(high, dict):
+        return None
+    try:
+        r1 = ldr_resistance(float(low["adc"]), cfg)
+        r2 = ldr_resistance(float(high["adc"]), cfg)
+        e1, e2 = float(low["lux"]), float(high["lux"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not r1 or not r2 or e1 <= 0 or e2 <= 0:
+        return None
+    span = math.log10(r2) - math.log10(r1)
+    if abs(span) < 1e-9:
+        return None
+    b = (math.log10(e2) - math.log10(e1)) / span
+    a = math.log10(e1) - b * math.log10(r1)
+    return a, b
+
+
+def fitted_gamma(cfg: dict) -> float | None:
+    """gamma = -1/b. A CdS cell sits between 0.5 and 0.9; a fit outside that
+    range means the wiring or r_fixed is wrong, so the UI surfaces it."""
+    fit = lux_fit(cfg)
+    if fit is None or abs(fit[1]) < 1e-9:
+        return None
+    return round(-1.0 / fit[1], 3)
+
+
+def _lux_at(adc_value: float, cfg: dict, fit: tuple[float, float]) -> float | None:
+    r_ldr = ldr_resistance(adc_value, cfg)
+    if not r_ldr or r_ldr <= 0:
+        return None
+    a, b = fit
+    try:
+        return 10.0 ** (a + b * math.log10(r_ldr))
+    except (OverflowError, ValueError):
+        return None
+
+
+def adc_to_lux(adc_value: float, cfg: dict) -> tuple[float | None, str]:
+    """Convert a 12-bit LDR reading to lux (see docs/light-adc-to-lux.md).
+
+    Returns (lux, status). Outside the divider's usable window the value is
+    censored rather than wrong: at the top the ADC pegs while the LDR still
+    has hundreds of ohms left, so a saturated sample means "at least this
+    bright" — reporting 0 lux there, as the previous version did, inverted
+    the reading and raised a too_dark warning under the brightest light.
+    """
+    fit = lux_fit(cfg)
+    if fit is None:
+        return None, LUX_UNCALIBRATED
+
+    adc_max = float(cfg.get("adc_max", 4095))
+    adc_sat = float(cfg.get("adc_saturation", adc_max))
+    adc_floor = float(cfg.get("adc_dark_floor", 0))
+
+    if adc_value >= adc_sat:
+        return _lux_at(adc_sat, cfg, fit), LUX_ABOVE_RANGE
+    if adc_value <= adc_floor:
+        return _lux_at(max(adc_floor, 1.0), cfg, fit), LUX_BELOW_RANGE
+
+    lux = _lux_at(adc_value, cfg, fit)
+    if lux is None:
+        return None, LUX_UNCALIBRATED
+    return lux, LUX_OK
+
+
+def resolve_brightness_lux(raw: dict, rules: dict) -> tuple[float | None, float | None, str | None]:
     fields = rules["firebase_fields"]
     adc_cfg = rules.get("light_adc")
 
     adc_val = extract_float(raw, fields.get("light_adc", ["light_adc"]))
     if adc_val is not None and adc_cfg:
-        return adc_to_lux(adc_val, adc_cfg), adc_val
+        lux, status = adc_to_lux(adc_val, adc_cfg)
+        return lux, adc_val, status
 
     lux = extract_float(raw, fields["brightness"])
     if lux is not None:
-        return lux, None
+        return lux, None, LUX_OK
 
-    return None, None
+    return None, None, None
 
 
 def evaluate_risk(
@@ -170,7 +244,7 @@ def process_reading(
     rules = get_rules()
     fields = rules["firebase_fields"]
     face_present = raw.get("face_present")
-    brightness_lux, light_adc = resolve_brightness_lux(raw, rules)
+    brightness_lux, light_adc, light_status = resolve_brightness_lux(raw, rules)
 
     cam_dist = sanitize_distance(
         extract_float(raw, ["camera_distance_cm", "camera_distance", "ai_distance_cm", "dist_cm"])
@@ -281,6 +355,7 @@ def process_reading(
         "ultrasonic_distance_cm": round(ultra_dist, 1) if ultra_dist is not None else None,
         "light_adc": light_adc,
         "brightness_lux": brightness_lux,
+        "light_status": light_status,
         "sitting_minutes": sitting_minutes,
         "blink_rate_bpm": blink_rate_bpm,
         "ear": round(ear, 3) if ear is not None else None,

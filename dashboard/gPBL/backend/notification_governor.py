@@ -73,11 +73,40 @@ def flag_key(flags: Iterable[str]) -> str:
     return "|".join(sorted({str(f) for f in flags if f and f not in DISABLED_FLAGS}))
 
 
-def spoken_line_for_flags(flags: Iterable[str]) -> str:
-    for flag in flags:
-        line = MOCK_SPOKEN.get(str(flag))
-        if line:
-            return line
+SPEAK_PRIORITY = (
+    "head_too_low",
+    "head_too_high",
+    "head_tilted",
+    "head_turned",
+    "critically_close",
+    "too_close",
+    "too_far",
+    "too_dark",
+    "too_bright",
+    "low_blink_rate",
+)
+
+
+def primary_flag(flags: Iterable[str], previous_key: str | None = None) -> str | None:
+    """Pick the flag to speak about: newly added first, then head pose before distance."""
+    current = [str(f) for f in flags if f and f not in DISABLED_FLAGS]
+    if not current:
+        return None
+    present = set(current)
+    prev = {p for p in str(previous_key or "").split("|") if p}
+    added = [f for f in SPEAK_PRIORITY if f in present and f not in prev]
+    if added:
+        return added[0]
+    for flag in SPEAK_PRIORITY:
+        if flag in present:
+            return flag
+    return current[0]
+
+
+def spoken_line_for_flags(flags: Iterable[str], previous_key: str | None = None) -> str:
+    flag = primary_flag(flags, previous_key=previous_key)
+    if flag:
+        return MOCK_SPOKEN.get(flag) or "Adjust your posture and workspace."
     return "Adjust your posture and workspace."
 
 
@@ -152,6 +181,7 @@ def fresh() -> dict:
         "snooze_until": None,
         "backoff_index": 0,
         "last_flag_key": None,
+        "prev_flag_key": None,
         "last_alert_at": None,
         "alert_started_at": None,
         "normal_since": None,
@@ -427,6 +457,7 @@ def tick(
     index = max(0, min(index, len(backoff) - 1))
 
     if key != state.get("last_flag_key"):
+        state["prev_flag_key"] = state.get("last_flag_key")
         state["last_flag_key"] = key
         state["backoff_index"] = 0
         state["last_alert_at"] = _iso(now)
@@ -451,7 +482,7 @@ def apply_llm_result(
     advice: dict,
     severity: str = SEVERITY_ALERT,
 ) -> dict:
-    spoken = advice.get("spoken_line") or spoken_line_for_flags(flag_set)
+    spoken = spoken_line_for_flags(flag_set, previous_key=state.get("prev_flag_key"))
     summary = advice.get("summary") or spoken
     state["last_spoken_line"] = spoken
     state["last_summary"] = summary
@@ -503,8 +534,9 @@ def mark_break_suggested(state: dict, severity: str = SEVERITY_NOTICE, rules: di
 
 
 def apply_repeat(state: dict, flag_set: list[str]) -> dict:
-    spoken = state.get("last_spoken_line") or spoken_line_for_flags(flag_set)
+    spoken = spoken_line_for_flags(flag_set, previous_key=state.get("prev_flag_key"))
     summary = state.get("last_summary") or spoken
+    state["last_spoken_line"] = spoken
     state["pending_advice"] = _new_pending(
         kind="alert",
         flag_set=flag_set,

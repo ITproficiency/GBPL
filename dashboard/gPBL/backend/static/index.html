@@ -21,8 +21,8 @@
       </div>
     </div>
     <nav class="tab-nav">
-      <button class="tab-btn active" data-tab="focus">⏱️ Focus Hub</button>
-      <button class="tab-btn" data-tab="details">📊 AI Telemetry &amp; Camera</button>
+      <button type="button" class="tab-btn active" data-tab="focus">⏱️ Focus Hub</button>
+      <button type="button" class="tab-btn" data-tab="details">📊 AI Telemetry &amp; Camera</button>
     </nav>
     <div class="header-right">
       <div class="source-lights" id="sourceLights" title="Waiting for source status">
@@ -34,7 +34,7 @@
       <button type="button" id="dndChip" class="session-badge state-dnd" hidden title="Do Not Disturb is on — click to turn off">DND</button>
       <span class="risk-pill" id="headerRiskPill">NORMAL</span>
       <span id="lastUpdate">Loading...</span>
-      <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Open settings">⚙</button>
+      <button type="button" id="settingsBtn" class="icon-btn" title="Settings" aria-label="Open settings">⚙</button>
     </div>
   </header>
 
@@ -51,10 +51,10 @@
 
           <!-- Pomodoro Timer Presets -->
           <div class="focus-preset-bar" id="focusPresetBar">
-            <button class="preset-btn active" data-mins="25">⚡ 25m Focus</button>
-            <button class="preset-btn" data-mins="50">🧠 50m Deep Work</button>
-            <button class="preset-btn" data-mins="5">☕ 5m Break</button>
-            <button class="preset-btn" data-mins="15">🧘 15m Rest</button>
+            <button type="button" class="preset-btn active" data-mins="25">⚡ 25m Focus</button>
+            <button type="button" class="preset-btn" data-mins="50">🧠 50m Deep Work</button>
+            <button type="button" class="preset-btn" data-mins="5">☕ 5m Break</button>
+            <button type="button" class="preset-btn" data-mins="15">🧘 15m Rest</button>
           </div>
 
           <div class="focus-ring-wrap">
@@ -72,9 +72,9 @@
           </div>
 
           <div class="focus-controls">
-            <button id="focusStartBtn" class="focus-btn primary">▶ Start Focus</button>
-            <button id="focusPauseBtn" class="focus-btn" disabled>⏸ Pause</button>
-            <button id="focusResetBtn" class="focus-btn" disabled>🔄 Reset</button>
+            <button type="button" id="focusStartBtn" class="focus-btn primary">▶ Start Focus</button>
+            <button type="button" id="focusPauseBtn" class="focus-btn" disabled>⏸ Pause</button>
+            <button type="button" id="focusResetBtn" class="focus-btn" disabled>🔄 Reset</button>
           </div>
 
           <!-- Ambient Audio Generator Control -->
@@ -87,11 +87,11 @@
               </div>
             </div>
             <div class="sound-chip-grid" id="soundChipGrid">
-              <button class="sound-chip active" data-sound="none">🔇 Off</button>
-              <button class="sound-chip" data-sound="rain">🌧️ Gentle Rain</button>
-              <button class="sound-chip" data-sound="ocean">🌊 Ocean Waves</button>
-              <button class="sound-chip" data-sound="breeze">🌲 Forest Breeze</button>
-              <button class="sound-chip" data-sound="white">🎵 White Noise</button>
+              <button type="button" class="sound-chip active" data-sound="none">🔇 Off</button>
+              <button type="button" class="sound-chip" data-sound="rain">🌧️ Gentle Rain</button>
+              <button type="button" class="sound-chip" data-sound="ocean">🌊 Ocean Waves</button>
+              <button type="button" class="sound-chip" data-sound="breeze">🌲 Forest Breeze</button>
+              <button type="button" class="sound-chip" data-sound="white">🎵 White Noise</button>
             </div>
           </div>
 
@@ -111,7 +111,7 @@
                 <span class="mini-chip" id="focusYawChip">Y: --</span>
                 <span class="mini-chip" id="focusSitChip">Sit --</span>
               </div>
-              <button id="focusCalibrateBtn" class="mini-calib-btn" title="Set current head pose as zero reference (0,0,0)">🎯 Calibrate (0,0,0)</button>
+              <button type="button" id="focusCalibrateBtn" class="mini-calib-btn" title="Set current head pose as zero reference (0,0,0)">🎯 Calibrate (0,0,0)</button>
             </div>
           </div>
 
@@ -210,7 +210,7 @@
                 <div class="label">Head Pose &amp; Rotation</div>
                 <div class="pose-top-actions">
                   <span class="pose-status-badge" id="poseStatusBadge">GOOD</span>
-                  <button id="cardCalibrateBtn" class="pose-calib-btn" title="Set current head orientation as (0,0,0) reference">🎯 Calibrate Origin</button>
+                  <button type="button" id="cardCalibrateBtn" class="pose-calib-btn" title="Set current head orientation as (0,0,0) reference">🎯 Calibrate Origin</button>
                 </div>
               </div>
               <div class="pose-chips-row" id="poseChipsRow">
@@ -274,10 +274,10 @@
               </div>
               <!-- Video Overlay Actions -->
               <div class="camera-overlay-actions">
-                <button id="camAxesToggleBtn" class="cam-action-btn active" title="Toggle 3D Head Orientation Axes Follow">📐 3D Axes</button>
-                <button id="camMirrorBtn" class="cam-action-btn" title="Mirror Video">🪞 Mirror</button>
-                <button id="camSnapshotBtn" class="cam-action-btn" title="Take Snapshot">📸 Snapshot</button>
-                <button id="camFullscreenBtn" class="cam-action-btn" title="Fullscreen">⛶ Fullscreen</button>
+                <button type="button" id="camAxesToggleBtn" class="cam-action-btn active" title="Toggle 3D Head Orientation Axes Follow">📐 3D Axes</button>
+                <button type="button" id="camMirrorBtn" class="cam-action-btn" title="Mirror Video">🪞 Mirror</button>
+                <button type="button" id="camSnapshotBtn" class="cam-action-btn" title="Take Snapshot">📸 Snapshot</button>
+                <button type="button" id="camFullscreenBtn" class="cam-action-btn" title="Fullscreen">⛶ Fullscreen</button>
               </div>
             </div>
             <!-- AI Engine & Camera Source Status Bar -->
@@ -296,10 +296,10 @@
             </style>
             <div class="camera-controls">
               <input type="text" id="streamUrlInput" placeholder="ESP32 IP (e.g. http://192.168.1.35:80/stream)" value="http://192.168.1.35:80/stream" />
-              <button id="connectCamBtn" class="focus-btn primary">Connect ESP32 Cam</button>
-              <button id="toggleWebcamBtn" class="focus-btn">Use Browser Webcam</button>
-              <button id="camCalibrateBtn" class="focus-btn calib-accent-btn" title="Set current head pose as zero reference (0,0,0)">🎯 Calibrate (0,0,0)</button>
-              <button id="stopCamBtn" class="focus-btn danger">⏹ Stop Stream</button>
+              <button type="button" id="connectCamBtn" class="focus-btn primary">Connect ESP32 Cam</button>
+              <button type="button" id="toggleWebcamBtn" class="focus-btn">Use Browser Webcam</button>
+              <button type="button" id="camCalibrateBtn" class="focus-btn calib-accent-btn" title="Set current head pose as zero reference (0,0,0)">🎯 Calibrate (0,0,0)</button>
+              <button type="button" id="stopCamBtn" class="focus-btn danger">⏹ Stop Stream</button>
             </div>
           </div>
 
@@ -353,7 +353,7 @@
           <div class="panel advice-panel" id="advicePanel">
             <div class="panel-header">
               <h2>AI Advice</h2>
-              <button id="analyzeBtn" class="analyze-btn insight-btn">Get Advice</button>
+              <button type="button" id="analyzeBtn" class="analyze-btn insight-btn">Get Advice</button>
             </div>
             <p id="analyzeStatus" class="analyze-status"></p>
             <div id="adviceContent" class="advice-content">
@@ -365,8 +365,8 @@
             <div class="panel-header">
               <h2>Session Insight</h2>
               <div class="panel-header-actions">
-                <button id="sessionReportBtn" class="analyze-btn insight-btn">Session Report</button>
-                <button id="insightBtn" class="analyze-btn insight-btn">Generate Insight</button>
+                <button type="button" id="sessionReportBtn" class="analyze-btn insight-btn">Session Report</button>
+                <button type="button" id="insightBtn" class="analyze-btn insight-btn">Generate Insight</button>
               </div>
             </div>
             <p id="insightStatus" class="analyze-status"></p>
@@ -387,7 +387,7 @@
     <div class="settings-panel">
       <div class="settings-header">
         <h2>Settings</h2>
-        <button id="settingsCloseBtn" class="icon-btn" aria-label="Close settings">✕</button>
+        <button type="button" id="settingsCloseBtn" class="icon-btn" aria-label="Close settings">✕</button>
       </div>
 
       <div class="settings-group">
@@ -459,6 +459,73 @@
           </label>
         </div>
         <p class="settings-hint">On: break suggestion at 3 minutes. Off: 20 minutes.</p>
+      </div>
+
+      <div class="settings-group">
+        <h3>Light sensor calibration</h3>
+        <p class="settings-hint">
+          The LDR reports a raw ADC value; lux is derived from it. Two reference points define the
+          curve — measure the ADC in a dark room and at a normally lit desk, then enter the
+          illuminance you expect at each.
+        </p>
+
+        <div class="settings-row">
+          <span>Wiring</span>
+          <select id="lightCircuitInput" class="settings-select">
+            <option value="ldr_to_vcc">LDR to VCC (ADC rises with light)</option>
+            <option value="ldr_to_gnd">LDR to GND (ADC falls with light)</option>
+          </select>
+        </div>
+        <p class="settings-hint">
+          Cover the sensor with your hand and watch the ADC. Falling means LDR&nbsp;to&nbsp;VCC.
+        </p>
+
+        <div class="settings-row">
+          <span>Fixed resistor</span>
+          <span class="settings-row-value"><input type="number" id="lightRFixedInput" min="1" step="100" class="settings-number" /> Ω</span>
+        </div>
+
+        <div class="calib-grid">
+          <span class="calib-head">Reference point</span>
+          <span class="calib-head">ADC</span>
+          <span class="calib-head">Lux</span>
+
+          <span class="calib-label">Dark room</span>
+          <input type="number" id="lightLowAdcInput" min="0" max="65535" step="1" class="settings-number" />
+          <input type="number" id="lightLowLuxInput" min="0.1" step="0.1" class="settings-number" />
+
+          <span class="calib-label">Lit desk</span>
+          <input type="number" id="lightHighAdcInput" min="0" max="65535" step="1" class="settings-number" />
+          <input type="number" id="lightHighLuxInput" min="0.1" step="1" class="settings-number" />
+        </div>
+
+        <div class="settings-row">
+          <span>Saturation ADC</span>
+          <span class="settings-row-value"><input type="number" id="lightSatInput" min="1" max="65535" step="1" class="settings-number" /></span>
+        </div>
+        <p class="settings-hint">
+          Where the ADC stops rising under brighter light. Readings at or above it are reported as
+          “above range”, never as darkness.
+        </p>
+
+        <div class="calib-readout" id="lightCalibReadout">
+          <div class="calib-stat">
+            <span class="calib-stat-k">Fitted γ</span>
+            <strong class="calib-stat-v" id="lightGammaValue">--</strong>
+          </div>
+          <div class="calib-stat">
+            <span class="calib-stat-k">Usable to</span>
+            <strong class="calib-stat-v" id="lightLinearValue">--</strong>
+          </div>
+          <div class="calib-stat">
+            <span class="calib-stat-k">Ceiling</span>
+            <strong class="calib-stat-v" id="lightCeilingValue">--</strong>
+          </div>
+        </div>
+        <p class="settings-hint" id="lightGammaHint"></p>
+
+        <button type="button" id="lightCalibSaveBtn" class="focus-btn primary">Save calibration</button>
+        <p class="yt-status" id="lightCalibStatus"></p>
       </div>
 
       <div class="settings-group">

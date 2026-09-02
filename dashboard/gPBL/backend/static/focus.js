@@ -48,6 +48,30 @@ function saveSettings() {
   safeLocalStorageSet("pc_settings", JSON.stringify(settings));
 }
 
+// #region agent log
+function agentLog(hypothesisId, location, message, data) {
+  const row = {
+    sessionId: "246fd2",
+    runId: "pre-fix",
+    hypothesisId,
+    location,
+    message,
+    data,
+    timestamp: Date.now(),
+  };
+  fetch("http://127.0.0.1:7881/ingest/c74b75a8-5049-48bd-af74-59f99c166a36", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "246fd2" },
+    body: JSON.stringify(row),
+  }).catch(() => {});
+  fetch("/api/debug-client-log", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(row),
+  }).catch(() => {});
+}
+// #endregion
+
 function loadTasks() {
   try {
     return JSON.parse(safeLocalStorageGet("pc_tasks") || "[]");
@@ -157,13 +181,24 @@ function stopAmbient() {
   ambientAudio = null;
 }
 
+function resolveSoundFile(kind) {
+  if (!kind || kind === "none") return null;
+  const aliases = { breeze: "wind" };
+  const ids = [kind, aliases[kind]].filter(Boolean);
+  for (const id of ids) {
+    const found = availableSounds.find((s) => s.id === id);
+    if (found) return found;
+  }
+  return null;
+}
+
 function startAmbient(kind) {
   stopAmbient();
   if (kind === "none") return;
 
-  const sound = availableSounds.find((s) => s.id === kind);
+  const sound = resolveSoundFile(kind);
   if (!sound) return;
-  stopYoutube(); // one music/ambience source at a time, avoid overlapping audio
+  stopYoutube();
 
   ambientAudio = new Audio(`/static/sounds/${sound.file}`);
   ambientAudio.loop = true;
@@ -177,7 +212,40 @@ function startAmbient(kind) {
 function setAmbientVolume(v) {
   settings.ambientVolume = v;
   if (ambientAudio) ambientAudio.volume = v;
+  if (synthGainNode) {
+    try {
+      synthGainNode.gain.setValueAtTime(v * 0.3, getAudioContext().currentTime);
+    } catch {
+      // Ignore live gain updates if the graph was torn down.
+    }
+  }
+  const hubSlider = document.getElementById("synthVolumeSlider");
+  if (hubSlider && hubSlider !== document.activeElement) hubSlider.value = String(v);
+  if (focusEls.ambientVolumeInput && focusEls.ambientVolumeInput !== document.activeElement) {
+    focusEls.ambientVolumeInput.value = String(Math.round(v * 100));
+  }
   saveSettings();
+}
+
+function playSelectedAmbient(kind) {
+  const next = kind || "none";
+  settings.ambientSound = next;
+  highlightSoundButton();
+  highlightSoundChips();
+  saveSettings();
+  stopSynthAmbient();
+  stopAmbient();
+  if (next === "none") return;
+  stopYoutube();
+  if (resolveSoundFile(next)) startAmbient(next);
+  else playSynthesizedAmbient(next, settings.ambientVolume);
+}
+
+function ensureAmbientPlaying() {
+  if (settings.ambientSound === "none") return;
+  if (ambientAudio && !ambientAudio.paused) return;
+  if (synthNoiseNode) return;
+  playSelectedAmbient(settings.ambientSound);
 }
 
 function renderSoundOptions() {
@@ -188,6 +256,7 @@ function renderSoundOptions() {
   );
   focusEls.soundOptions.innerHTML = optionsHtml.join("");
   highlightSoundButton();
+  highlightSoundChips();
 }
 
 async function loadAvailableSounds() {
@@ -204,18 +273,33 @@ async function loadAvailableSounds() {
 }
 
 function highlightSoundButton() {
+  if (!focusEls.soundOptions) return;
   focusEls.soundOptions.querySelectorAll(".sound-btn").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.sound === settings.ambientSound);
+    const id = btn.dataset.sound;
+    const current = settings.ambientSound;
+    const active = id === current || (id === "wind" && current === "breeze") || (id === "none" && current === "none");
+    btn.classList.toggle("active", active);
+  });
+}
+
+function highlightSoundChips() {
+  const chipGrid = document.getElementById("soundChipGrid");
+  if (!chipGrid) return;
+  const current = settings.ambientSound;
+  chipGrid.querySelectorAll(".sound-chip").forEach((btn) => {
+    const id = btn.dataset.sound;
+    const active =
+      id === current ||
+      (id === "breeze" && current === "wind") ||
+      (id === "wind" && current === "breeze");
+    btn.classList.toggle("active", active);
   });
 }
 
 focusEls.soundOptions.addEventListener("click", (e) => {
   const btn = e.target.closest("[data-sound]");
   if (!btn) return;
-  settings.ambientSound = btn.dataset.sound;
-  highlightSoundButton();
-  startAmbient(settings.ambientSound);
-  saveSettings();
+  playSelectedAmbient(btn.dataset.sound);
 });
 
 /* ---------------- Custom music (YouTube link) ----------------
@@ -259,9 +343,11 @@ async function playYoutubeUrl(url) {
   }
 
   // One audio source at a time — turn off procedural ambience first.
+  stopSynthAmbient();
   stopAmbient();
   settings.ambientSound = "none";
   highlightSoundButton();
+  highlightSoundChips();
 
   focusEls.youtubeStatus.textContent = "Loading...";
   await loadYoutubeApi();
@@ -347,6 +433,36 @@ function playTone(freq, durationMs) {
 
 /* ---------------- Voice reminders (Web Speech API — no external TTS service) ---------------- */
 
+let ttsUnlocked = false;
+let queuedSpeech = "";
+
+function unlockTtsFromGesture() {
+  if (ttsUnlocked) return;
+  ttsUnlocked = true;
+  try {
+    const ctx = typeof getAudioContext === "function" ? getAudioContext() : null;
+    if (ctx && ctx.state === "suspended") ctx.resume();
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.resume();
+      const warm = new SpeechSynthesisUtterance(" ");
+      warm.volume = 0.01;
+      window.speechSynthesis.speak(warm);
+    }
+  } catch {
+    // Unlock is best-effort.
+  }
+  if (queuedSpeech) {
+    const line = queuedSpeech;
+    queuedSpeech = "";
+    speak(line);
+  }
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener("pointerdown", unlockTtsFromGesture, true);
+  document.addEventListener("keydown", unlockTtsFromGesture, true);
+}
+
 function truncateForSpeech(text, maxChars = 220) {
   if (!text || text.length <= maxChars) return text || "";
   const cut = text.slice(0, maxChars);
@@ -355,13 +471,45 @@ function truncateForSpeech(text, maxChars = 220) {
 }
 
 function speak(text) {
-  if (!settings.voiceEnabled || !("speechSynthesis" in window) || !text) return;
-  if (window.speechSynthesis.speaking) return; // drop — do not cancel a line in progress
+  const synthOk = "speechSynthesis" in window;
+  const already = synthOk && window.speechSynthesis.speaking;
+  let reason = "ok";
+  if (!settings.voiceEnabled) reason = "voice_disabled";
+  else if (!synthOk) reason = "no_speechSynthesis";
+  else if (!text) reason = "empty_text";
+  else if (already) reason = "already_speaking";
+  else if (!ttsUnlocked) reason = "queued_waiting_gesture";
+  // #region agent log
+  agentLog("A", "focus.js:speak", "speak() called", {
+    reason,
+    voiceEnabled: !!settings.voiceEnabled,
+    synthOk,
+    alreadySpeaking: !!already,
+    ttsUnlocked,
+    textPreview: String(text || "").slice(0, 80),
+  });
+  // #endregion
+  if (!settings.voiceEnabled || !synthOk || !text) return;
+  if (already) return;
+  if (!ttsUnlocked) queuedSpeech = text;
   try {
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = "en-US";
+    const voices = window.speechSynthesis.getVoices() || [];
+    const en = voices.find((v) => (v.lang || "").toLowerCase().startsWith("en"));
+    if (en) utter.voice = en;
     const vol = Number(settings.voiceVolume);
     utter.volume = Number.isFinite(vol) ? Math.min(1, Math.max(0, vol)) : 1;
+    // #region agent log
+    utter.onstart = () => agentLog("E", "focus.js:speak", "utterance start", { textPreview: String(text).slice(0, 80) });
+    utter.onend = () => agentLog("E", "focus.js:speak", "utterance end", { textPreview: String(text).slice(0, 80) });
+    utter.onerror = (ev) =>
+      agentLog("E", "focus.js:speak", "utterance error", {
+        error: ev && ev.error,
+        textPreview: String(text).slice(0, 80),
+      });
+    // #endregion
+    window.speechSynthesis.resume();
     window.speechSynthesis.speak(utter);
   } catch {
     // TTS is optional; never block monitoring or dashboard entry.
@@ -464,16 +612,26 @@ focusEls.taskForm.addEventListener("submit", (e) => {
   renderTasks();
 });
 
+focusEls.taskList.addEventListener("change", (e) => {
+  if (!e.target.matches('input[type="checkbox"][data-action="toggle"]')) return;
+  const li = e.target.closest("[data-id]");
+  if (!li) return;
+  const task = tasks.find((t) => t.id === li.dataset.id);
+  if (!task) return;
+  task.done = e.target.checked;
+  saveTasks();
+  renderTasks();
+});
+
 focusEls.taskList.addEventListener("click", (e) => {
   const actionEl = e.target.closest("[data-action]");
   const li = e.target.closest("[data-id]");
   if (!actionEl || !li) return;
+  if (actionEl.dataset.action === "toggle") return;
   const task = tasks.find((t) => t.id === li.dataset.id);
   if (!task) return;
 
-  if (actionEl.dataset.action === "toggle") {
-    task.done = !task.done;
-  } else if (actionEl.dataset.action === "delete") {
+  if (actionEl.dataset.action === "delete") {
     tasks = tasks.filter((t) => t.id !== task.id);
     if (activeTaskId === task.id) setActiveTask(null);
   } else if (actionEl.dataset.action === "select") {
@@ -502,6 +660,8 @@ const focusTimer = {
   totalSec: 0,
   timerId: null,
   sessionsCompleted: 0,
+  paused: false,
+  pendingKind: "focus", // what Start launches while idle: focus | break
 };
 
 /* ---------------- AI rate limits (server-enforced, editable here) ---------------- */
@@ -552,7 +712,10 @@ function applyBackendDefaultFocusMinutes(minutes) {
       focusEls.focusMinutesInput.value = minutes;
       focusEls.focusMinutesValue.textContent = minutes;
     }
-    if (focusTimer.mode === "idle") updateFocusDisplay();
+    if (focusTimer.mode === "idle") {
+      updateFocusDisplay();
+      highlightPresetButtons();
+    }
   }
 }
 
@@ -562,30 +725,53 @@ function formatMMSS(totalSeconds) {
   return `${m}:${s}`;
 }
 
+function idleDurationSec() {
+  const mins = focusTimer.pendingKind === "break" ? settings.breakMinutes : settings.focusMinutes;
+  return Math.max(1, Number(mins) || 25) * 60;
+}
+
+function highlightPresetButtons() {
+  const bar = document.getElementById("focusPresetBar");
+  if (!bar) return;
+  bar.querySelectorAll(".preset-btn").forEach((btn) => {
+    const mins = Number(btn.dataset.mins);
+    const isBreak = mins === 5 || mins === 15;
+    const active =
+      focusTimer.pendingKind === "break"
+        ? isBreak && mins === Number(settings.breakMinutes)
+        : !isBreak && mins === Number(settings.focusMinutes);
+    btn.classList.toggle("active", active);
+  });
+}
+
 function updateFocusDisplay() {
   focusEls.focusTime.textContent =
-    focusTimer.mode === "idle" ? formatMMSS(settings.focusMinutes * 60) : formatMMSS(focusTimer.remainingSec);
+    focusTimer.mode === "idle" ? formatMMSS(idleDurationSec()) : formatMMSS(focusTimer.remainingSec);
   const fraction = focusTimer.totalSec ? focusTimer.remainingSec / focusTimer.totalSec : 1;
   focusEls.focusRingProgress.style.strokeDashoffset = FOCUS_RING_CIRCUMFERENCE * (1 - fraction);
-  focusEls.focusModeBadge.textContent =
-    focusTimer.mode === "focus" ? "FOCUS" : focusTimer.mode === "break" ? "BREAK" : "READY";
-  focusEls.focusModeBadge.className = "focus-mode-badge" + (focusTimer.mode === "break" ? " mode-break" : "");
-  focusEls.focusSessionCount.textContent = `Sessions completed: ${focusTimer.sessionsCompleted}`;
+  const badge =
+    focusTimer.mode === "focus" ? "FOCUS" : focusTimer.mode === "break" ? "BREAK" : focusTimer.pendingKind === "break" ? "READY TO BREAK" : "READY TO FOCUS";
+  focusEls.focusModeBadge.textContent = badge;
+  focusEls.focusModeBadge.className = "focus-mode-badge" + (focusTimer.mode === "break" || (focusTimer.mode === "idle" && focusTimer.pendingKind === "break") ? " mode-break" : "");
+  focusEls.focusSessionCount.textContent = `Total Sessions Completed: ${focusTimer.sessionsCompleted}`;
+  const pomodoroCountEl = document.getElementById("pomodoroCount");
+  if (pomodoroCountEl) pomodoroCountEl.textContent = `🍅 ${focusTimer.sessionsCompleted} Completed`;
 }
 
 function setFocusButtons(state) {
   if (state === "idle") {
     focusEls.focusStartBtn.disabled = false;
+    focusEls.focusStartBtn.textContent = focusTimer.pendingKind === "break" ? "▶ Start Break" : "▶ Start Focus";
     focusEls.focusPauseBtn.disabled = true;
-    focusEls.focusPauseBtn.textContent = "Pause";
+    focusEls.focusPauseBtn.textContent = "⏸ Pause";
     focusEls.focusResetBtn.disabled = true;
   } else if (state === "running") {
     focusEls.focusStartBtn.disabled = true;
     focusEls.focusPauseBtn.disabled = false;
-    focusEls.focusPauseBtn.textContent = "Pause";
+    focusEls.focusPauseBtn.textContent = "⏸ Pause";
     focusEls.focusResetBtn.disabled = false;
   } else if (state === "paused") {
-    focusEls.focusPauseBtn.textContent = "Resume";
+    focusEls.focusPauseBtn.textContent = "▶ Resume";
   }
 }
 
@@ -614,6 +800,7 @@ function onBreakComplete() {
   playTone(660, 400);
   notify("Break over", "Ready for another focus session?");
   syncSessionBreak(false);
+  focusTimer.paused = false;
   focusTimer.mode = "idle";
   focusTimer.remainingSec = 0;
   focusTimer.totalSec = 0;
@@ -631,8 +818,11 @@ async function syncSessionBreak(enter) {
 
 function startFocus() {
   requestNotificationPermission();
-  if (settings.ambientSound !== "none") startAmbient(settings.ambientSound);
+  if (typeof ensureAmbientPlaying === "function") ensureAmbientPlaying();
+  else if (settings.ambientSound !== "none") startAmbient(settings.ambientSound);
   syncSessionBreak(false);
+  clearInterval(focusTimer.timerId);
+  focusTimer.paused = false;
   focusTimer.mode = "focus";
   focusTimer.totalSec = settings.focusMinutes * 60;
   focusTimer.remainingSec = focusTimer.totalSec;
@@ -642,7 +832,10 @@ function startFocus() {
 }
 
 function startBreak() {
+  requestNotificationPermission();
   syncSessionBreak(true);
+  clearInterval(focusTimer.timerId);
+  focusTimer.paused = false;
   focusTimer.mode = "break";
   focusTimer.totalSec = settings.breakMinutes * 60;
   focusTimer.remainingSec = focusTimer.totalSec;
@@ -654,6 +847,7 @@ function startBreak() {
 function resetFocus() {
   if (focusTimer.mode === "break") syncSessionBreak(false);
   clearInterval(focusTimer.timerId);
+  focusTimer.paused = false;
   focusTimer.mode = "idle";
   focusTimer.remainingSec = 0;
   focusTimer.totalSec = 0;
@@ -661,13 +855,19 @@ function resetFocus() {
   setFocusButtons("idle");
 }
 
-focusEls.focusStartBtn.addEventListener("click", startFocus);
+focusEls.focusStartBtn.addEventListener("click", () => {
+  if (focusTimer.pendingKind === "break") startBreak();
+  else startFocus();
+});
 focusEls.focusResetBtn.addEventListener("click", resetFocus);
 focusEls.focusPauseBtn.addEventListener("click", () => {
-  if (focusEls.focusPauseBtn.textContent === "Pause") {
+  if (focusTimer.mode === "idle" || focusEls.focusPauseBtn.disabled) return;
+  if (!focusTimer.paused) {
     clearInterval(focusTimer.timerId);
+    focusTimer.paused = true;
     setFocusButtons("paused");
   } else {
+    focusTimer.paused = false;
     focusTimer.timerId = setInterval(tickFocus, 1000);
     setFocusButtons("running");
   }
@@ -684,18 +884,32 @@ focusEls.settingsCloseBtn.addEventListener("click", () => {
 focusEls.settingsOverlay.addEventListener("click", (e) => {
   if (e.target === focusEls.settingsOverlay) focusEls.settingsOverlay.classList.remove("open");
 });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && focusEls.settingsOverlay.classList.contains("open")) {
+    focusEls.settingsOverlay.classList.remove("open");
+  }
+});
 
 focusEls.focusMinutesInput.addEventListener("input", () => {
   settings.focusMinutes = Number(focusEls.focusMinutesInput.value);
   focusEls.focusMinutesValue.textContent = settings.focusMinutes;
   saveSettings();
-  if (focusTimer.mode === "idle") updateFocusDisplay();
+  if (focusTimer.mode === "idle") {
+    if (focusTimer.pendingKind === "focus") {
+      updateFocusDisplay();
+      highlightPresetButtons();
+    }
+  }
 });
 
 focusEls.breakMinutesInput.addEventListener("input", () => {
   settings.breakMinutes = Number(focusEls.breakMinutesInput.value);
   focusEls.breakMinutesValue.textContent = settings.breakMinutes;
   saveSettings();
+  if (focusTimer.mode === "idle" && focusTimer.pendingKind === "break") {
+    updateFocusDisplay();
+    highlightPresetButtons();
+  }
 });
 
 focusEls.ambientVolumeInput.addEventListener("input", () => {
@@ -713,17 +927,39 @@ let synthGainNode = null;
 let synthFilterNode = null;
 
 function stopSynthAmbient() {
-  if (synthGainNode) {
-    try {
-      const ctx = getAudioContext();
-      synthGainNode.gain.linearRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-      setTimeout(() => {
-        if (synthNoiseNode) {
-          synthNoiseNode.stop();
-          synthNoiseNode.disconnect();
-          synthNoiseNode = null;
+  const noise = synthNoiseNode;
+  const gain = synthGainNode;
+  const filter = synthFilterNode;
+  synthNoiseNode = null;
+  synthGainNode = null;
+  synthFilterNode = null;
+  if (!noise && !gain && !filter) return;
+  try {
+    const ctx = getAudioContext();
+    if (gain) {
+      try {
+        gain.gain.cancelScheduledValues(ctx.currentTime);
+        gain.gain.setValueAtTime(Math.max(gain.gain.value, 0.001), ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+      } catch {
+        // Ignore ramp errors and stop immediately.
+      }
+    }
+    setTimeout(() => {
+      try {
+        if (noise) {
+          noise.stop();
+          noise.disconnect();
         }
-      }, 350);
+        if (filter) filter.disconnect();
+        if (gain) gain.disconnect();
+      } catch {
+        // Ignore cleanup error
+      }
+    }, 100);
+  } catch {
+    try {
+      if (noise) noise.stop();
     } catch {
       // Ignore cleanup error
     }
@@ -794,22 +1030,24 @@ if (focusPresetBar) {
     const mins = Number(btn.dataset.mins);
     if (!mins) return;
 
-    focusPresetBar.querySelectorAll(".preset-btn").forEach((b) => b.classList.remove("active"));
-    btn.classList.add("active");
+    const isBreak = mins === 5 || mins === 15;
+    focusTimer.pendingKind = isBreak ? "break" : "focus";
 
-    if (mins === 5 || mins === 15) {
+    if (isBreak) {
       settings.breakMinutes = mins;
+      if (focusEls.breakMinutesInput) focusEls.breakMinutesInput.value = mins;
+      if (focusEls.breakMinutesValue) focusEls.breakMinutesValue.textContent = mins;
     } else {
       settings.focusMinutes = mins;
       if (focusEls.focusMinutesInput) focusEls.focusMinutesInput.value = mins;
       if (focusEls.focusMinutesValue) focusEls.focusMinutesValue.textContent = mins;
     }
     saveSettings();
+    highlightPresetButtons();
 
     if (focusTimer.mode === "idle") {
-      focusTimer.totalSeconds = mins * 60;
-      focusTimer.remainingSeconds = focusTimer.totalSeconds;
       updateFocusDisplay();
+      setFocusButtons("idle");
     }
   });
 }
@@ -822,24 +1060,13 @@ if (soundChipGrid) {
   soundChipGrid.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-sound]");
     if (!btn) return;
-    const kind = btn.dataset.sound;
-
-    soundChipGrid.querySelectorAll(".sound-chip").forEach((b) => b.classList.remove("active"));
-    btn.classList.add("active");
-
-    const vol = synthVolumeSlider ? Number(synthVolumeSlider.value) : 0.5;
-    playSynthesizedAmbient(kind, vol);
+    playSelectedAmbient(btn.dataset.sound);
   });
 }
 
 if (synthVolumeSlider) {
   synthVolumeSlider.addEventListener("input", () => {
-    const vol = Number(synthVolumeSlider.value);
-    if (synthGainNode) {
-      try {
-        synthGainNode.gain.setValueAtTime(vol * 0.3, getAudioContext().currentTime);
-      } catch {}
-    }
+    setAmbientVolume(Number(synthVolumeSlider.value));
   });
 }
 
@@ -853,12 +1080,22 @@ function initFocusUI() {
   focusEls.ambientVolumeInput.value = Math.round(settings.ambientVolume * 100);
   focusEls.alarmVolumeInput.value = Math.round(settings.alarmVolume * 100);
   focusEls.voiceEnabledInput.checked = settings.voiceEnabled;
+  // #region agent log
+  agentLog("A", "focus.js:initFocusUI", "voice setting at load", {
+    voiceEnabled: !!settings.voiceEnabled,
+    synthOk: "speechSynthesis" in window,
+    hasPcSettings: !!safeLocalStorageGet("pc_settings"),
+  });
+  // #endregion
   focusEls.voiceVolumeInput.value = Math.round(settings.voiceVolume * 100);
   focusEls.youtubeUrlInput.value = settings.youtubeUrl || "";
   focusEls.youtubeVolumeInput.value = Math.round(settings.youtubeVolume * 100);
   loadAvailableSounds();
   highlightThemeButton();
+  highlightPresetButtons();
+  highlightSoundChips();
   applyTheme();
+  if (synthVolumeSlider) synthVolumeSlider.value = String(settings.ambientVolume);
   updateFocusDisplay();
   setFocusButtons("idle");
   renderTasks();

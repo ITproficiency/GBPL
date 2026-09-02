@@ -10,6 +10,7 @@ import logging
 import threading
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 import config
@@ -21,6 +22,33 @@ import processing
 import tracking_manager
 
 logger = logging.getLogger(__name__)
+
+# #region agent log
+_DEBUG_LOG = Path(r"d:\Workspace\GBPL\debug-246fd2.log")
+
+def _agent_log(hypothesis_id: str, location: str, message: str, data: dict) -> None:
+    try:
+        import json as _json
+        import time as _time
+        with _DEBUG_LOG.open("a", encoding="utf-8") as _f:
+            _f.write(
+                _json.dumps(
+                    {
+                        "sessionId": "246fd2",
+                        "runId": "pre-fix",
+                        "hypothesisId": hypothesis_id,
+                        "location": location,
+                        "message": message,
+                        "data": data,
+                        "timestamp": int(_time.time() * 1000),
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+    except Exception:
+        pass
+# #endregion
 
 STATE_IDLE = "idle"
 STATE_CALIBRATING = "calibrating"
@@ -194,6 +222,7 @@ class SessionManager:
         self._sensor_hash: tuple | None = None
         self._sensor_changed_at: datetime | None = None
         self._face_seen_at: datetime | None = None
+        self._allow_autostart = True
         self._restore_open_session()
 
     def start(self, source: str = "0") -> dict:
@@ -219,45 +248,13 @@ class SessionManager:
             if not started and not tracking_manager.is_tracking_active():
                 return self._tracking_payload(ok=False)
 
-            now = _utcnow()
-            timing = _session_timing_from_store()
-            self.session_id = uuid.uuid4().hex
-            self.last_session_id = self.session_id
-            self.source = source
-            self.state = STATE_CALIBRATING
-            self.started_at = now
-            self.ended_at = None
-            self.grace_until = now + timedelta(seconds=timing["grace_sec"])
-            self.exposure_sec = 0.0
-            self._exposure_tick_at = now
-            self._face_lost_since = None
-            self._away_since = None
-            self.face_present = False
-            self._last_insert_ts = None
-            self.flag_durations = {}
-            self.flag_set = []
-            self.qualified_flags = []
-            self.severity = governor.SEVERITY_NORMAL
-            self._gov = governor.fresh()
-            self._backend_durations = {}
-            self._duration_tick_at = now
-            self._face_seen_at = None
-            history_store.create_session(
-                {
-                    "id": self.session_id,
-                    "device_id": self.device_id,
-                    "source": source,
-                    "state": self.state,
-                    "started_at": _iso(self.started_at),
-                    "grace_until": _iso(self.grace_until),
-                    "governor_json": governor.dump(self._gov),
-                }
-            )
-            self._push_led({"red": False, "green": False, "blink": False})
+            self._allow_autostart = True
+            self._open_new_session(_utcnow(), source or spawn_source, skip_grace=False)
             return self._tracking_payload(ok=True)
 
     def stop(self) -> dict:
         with self._lock:
+            self._allow_autostart = False
             sid = self.session_id
             if self.state in ACTIVE_STATES:
                 self._close_session("stop")
@@ -302,11 +299,38 @@ class SessionManager:
             self._update_flags_and_durations(raw, reading, now)
 
             if self.state in (STATE_IDLE, STATE_ENDED):
-                if reading is not None:
-                    reading = {**reading, "sitting_minutes": None, "session_id": None}
-                self._reading = reading
-                self._push_led({"red": False, "green": False, "blink": False})
-                return self.snapshot()
+                if self._allow_autostart and self.face_present:
+                    # #region agent log
+                    _agent_log(
+                        "B",
+                        "session_manager.py:tick:autostart",
+                        "auto-open monitoring because live face while idle",
+                        {
+                            "state": self.state,
+                            "face_present": self.face_present,
+                            "flag_set": list(self.flag_set),
+                        },
+                    )
+                    # #endregion
+                    self._open_new_session(now, self.source or "0", skip_grace=True)
+                else:
+                    # #region agent log
+                    _agent_log(
+                        "B",
+                        "session_manager.py:tick:idle",
+                        "tick skipped governor (idle/ended)",
+                        {
+                            "state": self.state,
+                            "face_present": self.face_present,
+                            "flag_set": list(self.flag_set),
+                        },
+                    )
+                    # #endregion
+                    if reading is not None:
+                        reading = {**reading, "sitting_minutes": None, "session_id": None}
+                    self._reading = reading
+                    self._push_led({"red": False, "green": False, "blink": False})
+                    return self.snapshot()
 
             timing = _session_timing_from_store()
             if self.state == STATE_CALIBRATING and self.grace_until and now >= self.grace_until:
@@ -476,6 +500,53 @@ class SessionManager:
                 self._apply_led()
                 self._persist_governor()
             return self.snapshot()
+
+    def _open_new_session(self, now: datetime, source: str, *, skip_grace: bool = False) -> None:
+        """Open a device session. skip_grace=True when tracking is already live (root launcher)."""
+        timing = _session_timing_from_store()
+        self.session_id = uuid.uuid4().hex
+        self.last_session_id = self.session_id
+        self.source = source
+        self.started_at = now
+        self.ended_at = None
+        if skip_grace:
+            self.state = STATE_MONITORING
+            self.grace_until = None
+            # Tracking already ran while idle: keep live flags and seed holds
+            # so a long-held violation can fire on this tick (not after another 15–60s).
+            seeded = dict(self._backend_durations or {})
+            for flag in self.flag_set:
+                seeded[str(flag)] = max(float(seeded.get(flag) or 0.0), 120.0)
+            self._backend_durations = seeded
+            self.flag_durations = governor.merge_durations(
+                self.flag_durations, self._backend_durations, self.flag_set
+            )
+        else:
+            self.state = STATE_CALIBRATING
+            self.grace_until = now + timedelta(seconds=timing["grace_sec"])
+            self.flag_durations = {}
+            self.qualified_flags = []
+            self._backend_durations = {}
+        self.exposure_sec = 0.0
+        self._exposure_tick_at = now
+        self._face_lost_since = None
+        self._away_since = None
+        self._last_insert_ts = None
+        self.severity = governor.SEVERITY_NORMAL
+        self._gov = governor.fresh()
+        self._duration_tick_at = now
+        history_store.create_session(
+            {
+                "id": self.session_id,
+                "device_id": self.device_id,
+                "source": source,
+                "state": self.state,
+                "started_at": _iso(self.started_at),
+                "grace_until": _iso(self.grace_until),
+                "governor_json": governor.dump(self._gov),
+            }
+        )
+        self._push_led({"red": False, "green": False, "blink": False})
 
     def _tracking_payload(self, ok: bool) -> dict:
         payload = {
@@ -679,6 +750,27 @@ class SessionManager:
         else:
             self.severity = self._gov.get("severity") or classified
 
+        # #region agent log
+        _agent_log(
+            "B",
+            "session_manager.py:_run_governor",
+            "governor tick",
+            {
+                "state": self.state,
+                "in_grace": in_grace,
+                "can_fire": can_fire,
+                "action": action,
+                "classified": classified,
+                "severity": self.severity,
+                "flag_set": list(self.flag_set),
+                "qualified": list(qualified),
+                "flag_durations": {k: round(float(v), 1) for k, v in (self.flag_durations or {}).items()},
+                "dnd": bool(self._gov.get("dnd")),
+                "pending_speak": bool((self._gov.get("pending_advice") or {}).get("speak")),
+                "pending_kind": ((self._gov.get("pending_advice") or {}).get("kind")),
+            },
+        )
+        # #endregion
         if action == governor.ACTION_LLM and reading is not None:
             try:
                 advice = llm_service.analyze_warning(
@@ -702,6 +794,20 @@ class SessionManager:
             self._gov = governor.apply_llm_result(
                 self._gov, flag_set=qualified, advice=advice, severity=self.severity
             )
+            # #region agent log
+            _pa = self._gov.get("pending_advice") or {}
+            _agent_log(
+                "F",
+                "session_manager.py:apply_llm",
+                "spoken line after llm",
+                {
+                    "qualified": list(qualified),
+                    "primary": governor.primary_flag(qualified, self._gov.get("prev_flag_key")),
+                    "spoken": (_pa.get("spoken_line") or "")[:80],
+                    "prev_key": self._gov.get("prev_flag_key"),
+                },
+            )
+            # #endregion
         elif action == governor.ACTION_REPEAT:
             self._gov = governor.apply_repeat(self._gov, qualified)
 
