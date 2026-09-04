@@ -288,6 +288,16 @@ function renderSensor(data) {
     els.headerRiskPill.className = "risk-pill risk-" + data.risk_level;
   }
 
+  // Update Green & Red LED Warning Badge
+  const ledDotGreen = document.getElementById("ledDotGreen");
+  const ledStatusText = document.getElementById("ledStatusText");
+  if (ledDotGreen && ledStatusText) {
+    const isGood = data.posture_status === "GOOD";
+    ledDotGreen.className = "led-dot " + (isGood ? "green" : "red");
+    ledStatusText.textContent = isGood ? "Green LED ON" : "Red LED ALERT!";
+    ledStatusText.style.color = isGood ? "#10b981" : "#ef4444";
+  }
+
   const msgs = (data.warning_messages || []).filter(m => m && !m.includes("PostureCare targets"));
   if (msgs.length === 0) {
     els.alertList.innerHTML = '<li class="empty">All readings within PostureCare targets</li>';

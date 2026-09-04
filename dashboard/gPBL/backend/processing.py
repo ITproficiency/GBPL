@@ -252,6 +252,12 @@ def process_reading(raw: Any, default_device_id: str = "esp32_001") -> dict | No
         "risk_level": risk_level,
         "warning_messages": all_warnings,
         "events": extended_events,
+        "led_state": {
+            "green_led": posture_status == "GOOD",
+            "red_led": posture_status in ["WARNING", "DANGER"],
+            "buzzer": posture_status == "DANGER",
+            "status": posture_status
+        },
         "llm_eligible": should_call_llm(risk_level),
         "timestamp": raw.get("timestamp") or datetime.now(timezone.utc).isoformat(),
     }

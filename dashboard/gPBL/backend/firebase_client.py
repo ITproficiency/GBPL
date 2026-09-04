@@ -53,7 +53,7 @@ def _rest_put(path: str, data: Any) -> bool:
         payload = json.dumps(data, ensure_ascii=False).encode('utf-8')
         req = urllib.request.Request(url, data=payload, method='PUT', headers={'Content-Type': 'application/json'})
         ctx = ssl._create_unverified_context()
-        with urllib.request.urlopen(req, data=payload, method='PUT', headers={'Content-Type': 'application/json'}) as resp:
+        with urllib.request.urlopen(req, timeout=3.0, context=ctx) as resp:
             return True
     except Exception:
         return False
@@ -105,17 +105,28 @@ def get_advice_list(limit: int = 5) -> list[dict]:
     return combined[:limit]
 
 
-def push_led_state(is_on: bool) -> None:
+def push_led_state(green_led: bool = True, red_led: bool = False, buzzer: bool = False, status: str = "GOOD", warning_messages: list = None) -> dict:
+    import time
     global _use_rest_fallback
+    payload = {
+        "green_led": bool(green_led),
+        "red_led": bool(red_led),
+        "buzzer": bool(buzzer),
+        "status": str(status),
+        "warning_messages": warning_messages or [],
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "timestamp": time.time()
+    }
     if not _use_rest_fallback:
         try:
             ref = get_ref(config.FIREBASE_LED_PATH)
             if ref:
-                ref.set(is_on)
-                return
+                ref.set(payload)
+                return payload
         except Exception:
             _use_rest_fallback = True
-    _rest_put(config.FIREBASE_LED_PATH, is_on)
+    _rest_put(config.FIREBASE_LED_PATH, payload)
+    return payload
 
 
 def push_advice(advice: dict, reading: dict) -> str:
