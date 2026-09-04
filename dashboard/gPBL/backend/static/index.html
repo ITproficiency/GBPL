@@ -21,20 +21,15 @@
       </div>
     </div>
     <nav class="tab-nav">
-      <button type="button" class="tab-btn active" data-tab="focus">⏱️ Focus Hub</button>
-      <button type="button" class="tab-btn" data-tab="details">📊 AI Telemetry &amp; Camera</button>
+      <button class="tab-btn active" data-tab="focus">⏱️ Focus Hub</button>
+      <button class="tab-btn" data-tab="details">📊 AI Telemetry &amp; Camera</button>
     </nav>
     <div class="header-right">
-      <div class="source-lights" id="sourceLights" title="Waiting for source status">
-        <span class="source-light" data-source="sensors"><span class="source-dot" id="srcSensorsDot"></span> Sensors</span>
-        <span class="source-light" data-source="cam"><span class="source-dot" id="srcCamDot"></span> Cam</span>
-        <span class="source-light" data-source="ai"><span class="source-dot" id="srcAiDot"></span> AI</span>
-      </div>
-      <span id="sessionStateBadge" class="session-badge state-idle">IDLE</span>
-      <button type="button" id="dndChip" class="session-badge state-dnd" hidden title="Do Not Disturb is on — click to turn off">DND</button>
+      <span class="cloud-status-badge"><span class="cloud-dot"></span> Firebase Realtime</span>
+      <span class="led-badge" id="ledIndicatorBadge" title="ESP32 Physical Warning LEDs"><span class="led-dot green" id="ledDotGreen"></span> <span id="ledStatusText">Green LED ON</span></span>
       <span class="risk-pill" id="headerRiskPill">NORMAL</span>
       <span id="lastUpdate">Loading...</span>
-      <button type="button" id="settingsBtn" class="icon-btn" title="Settings" aria-label="Open settings">⚙</button>
+      <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Open settings">⚙</button>
     </div>
   </header>
 
@@ -51,10 +46,10 @@
 
           <!-- Pomodoro Timer Presets -->
           <div class="focus-preset-bar" id="focusPresetBar">
-            <button type="button" class="preset-btn active" data-mins="25">⚡ 25m Focus</button>
-            <button type="button" class="preset-btn" data-mins="50">🧠 50m Deep Work</button>
-            <button type="button" class="preset-btn" data-mins="5">☕ 5m Break</button>
-            <button type="button" class="preset-btn" data-mins="15">🧘 15m Rest</button>
+            <button class="preset-btn active" data-mins="25">⚡ 25m Focus</button>
+            <button class="preset-btn" data-mins="50">🧠 50m Deep Work</button>
+            <button class="preset-btn" data-mins="5">☕ 5m Break</button>
+            <button class="preset-btn" data-mins="15">🧘 15m Rest</button>
           </div>
 
           <div class="focus-ring-wrap">
@@ -72,9 +67,9 @@
           </div>
 
           <div class="focus-controls">
-            <button type="button" id="focusStartBtn" class="focus-btn primary">▶ Start Focus</button>
-            <button type="button" id="focusPauseBtn" class="focus-btn" disabled>⏸ Pause</button>
-            <button type="button" id="focusResetBtn" class="focus-btn" disabled>🔄 Reset</button>
+            <button id="focusStartBtn" class="focus-btn primary">▶ Start Focus</button>
+            <button id="focusPauseBtn" class="focus-btn" disabled>⏸ Pause</button>
+            <button id="focusResetBtn" class="focus-btn" disabled>🔄 Reset</button>
           </div>
 
           <!-- Ambient Audio Generator Control -->
@@ -87,11 +82,11 @@
               </div>
             </div>
             <div class="sound-chip-grid" id="soundChipGrid">
-              <button type="button" class="sound-chip active" data-sound="none">🔇 Off</button>
-              <button type="button" class="sound-chip" data-sound="rain">🌧️ Gentle Rain</button>
-              <button type="button" class="sound-chip" data-sound="ocean">🌊 Ocean Waves</button>
-              <button type="button" class="sound-chip" data-sound="breeze">🌲 Forest Breeze</button>
-              <button type="button" class="sound-chip" data-sound="white">🎵 White Noise</button>
+              <button class="sound-chip active" data-sound="none">🔇 Off</button>
+              <button class="sound-chip" data-sound="rain">🌧️ Gentle Rain</button>
+              <button class="sound-chip" data-sound="ocean">🌊 Ocean Waves</button>
+              <button class="sound-chip" data-sound="breeze">🌲 Forest Breeze</button>
+              <button class="sound-chip" data-sound="white">🎵 White Noise</button>
             </div>
           </div>
 
@@ -109,9 +104,8 @@
                 <span class="mini-chip" id="focusPitchChip">P: --</span>
                 <span class="mini-chip" id="focusRollChip">R: --</span>
                 <span class="mini-chip" id="focusYawChip">Y: --</span>
-                <span class="mini-chip" id="focusSitChip">Sit --</span>
               </div>
-              <button type="button" id="focusCalibrateBtn" class="mini-calib-btn" title="Set current head pose as zero reference (0,0,0)">🎯 Calibrate (0,0,0)</button>
+              <button id="focusCalibrateBtn" class="mini-calib-btn" title="Set current head pose as zero reference (0,0,0)">🎯 Calibrate (0,0,0)</button>
             </div>
           </div>
 
@@ -135,53 +129,6 @@
     </section>
 
     <section id="detailsView" class="tab-view">
-      <div id="guidedStartOverlay" class="guided-overlay" hidden>
-        <div class="guided-card">
-          <div class="guided-header">
-            <h2>Guided start</h2>
-            <button type="button" id="guidedSkipBtn" class="guided-skip">Skip</button>
-          </div>
-          <ol class="guided-steps-indicator" id="guidedStepsIndicator">
-            <li class="active" data-gstep="1">Camera</li>
-            <li data-gstep="2">Preview</li>
-            <li data-gstep="3">Calibrate</li>
-            <li data-gstep="4">Ready</li>
-          </ol>
-          <div class="guided-pane" id="guidedPane1">
-            <h3>Choose camera source</h3>
-            <p class="guided-copy">Pick the ESP32-CAM stream or this computer’s webcam.</p>
-            <label class="guided-radio"><input type="radio" name="guidedSource" value="esp32" checked /> ESP32-CAM</label>
-            <input type="text" id="guidedStreamUrl" placeholder="ESP32 IP (e.g. http://192.168.1.35:80/stream)" value="http://192.168.1.35:80/stream" />
-            <label class="guided-radio"><input type="radio" name="guidedSource" value="webcam" /> Browser webcam</label>
-            <button type="button" id="guidedStep1Btn" class="focus-btn primary">Continue</button>
-          </div>
-          <div class="guided-pane" id="guidedPane2" hidden>
-            <h3>Sit straight</h3>
-            <p class="guided-copy">Face the camera with a neutral head position. Preview starts the tracking session (20s grace until you enter the dashboard).</p>
-            <div class="guided-preview-wrap">
-              <img id="guidedPreviewImg" alt="Camera preview" />
-            </div>
-            <p id="guidedStep2Status" class="guided-status"></p>
-            <div class="guided-actions">
-              <button type="button" id="guidedStep2Btn" class="focus-btn primary">Start preview</button>
-              <button type="button" id="guidedStep2Next" class="focus-btn" disabled>Continue</button>
-            </div>
-          </div>
-          <div class="guided-pane" id="guidedPane3" hidden>
-            <h3>Calibrate</h3>
-            <p class="guided-copy">Look at the camera, sit straight, then set this pose as zero. Auto-zero from the first frame does not count.</p>
-            <button type="button" id="guidedCalibrateBtn" class="focus-btn calib-accent-btn">🎯 Calibrate</button>
-            <p id="guidedCalibStatus" class="guided-status"></p>
-            <button type="button" id="guidedStep3Next" class="focus-btn primary" disabled>Continue</button>
-          </div>
-          <div class="guided-pane" id="guidedPane4" hidden>
-            <h3>Enter dashboard</h3>
-            <p class="guided-copy">Start monitoring this session. The STARTING grace ends when you enter.</p>
-            <label class="guided-check"><input type="checkbox" id="guidedVoiceEnabled" checked /> Speak reminders aloud</label>
-            <button type="button" id="guidedReadyBtn" class="focus-btn primary">Enter dashboard</button>
-          </div>
-        </div>
-      </div>
       <div class="details-grid">
         <div class="details-main">
           <div class="cards">
@@ -198,8 +145,8 @@
               <div class="value"><span id="earValue">--</span> <span class="unit">/ <span id="earThreshold">0.294</span></span></div>
             </div>
             <div class="card">
-              <div class="label">Blink rate</div>
-              <div class="value"><span id="blinkRate">--</span> <span class="unit">/min</span></div>
+              <div class="label">Blink Rate / Count</div>
+              <div class="value"><span id="blinks">--</span> <span class="unit">blinks</span></div>
             </div>
             <div class="card">
               <div class="label">Brightness</div>
@@ -210,7 +157,7 @@
                 <div class="label">Head Pose &amp; Rotation</div>
                 <div class="pose-top-actions">
                   <span class="pose-status-badge" id="poseStatusBadge">GOOD</span>
-                  <button type="button" id="cardCalibrateBtn" class="pose-calib-btn" title="Set current head orientation as (0,0,0) reference">🎯 Calibrate Origin</button>
+                  <button id="cardCalibrateBtn" class="pose-calib-btn" title="Set current head orientation as (0,0,0) reference">🎯 Calibrate Origin</button>
                 </div>
               </div>
               <div class="pose-chips-row" id="poseChipsRow">
@@ -218,7 +165,7 @@
                   <span class="pose-chip-axis">P</span>
                   <span class="pose-chip-val" id="pitchVal">--</span>
                 </div>
-                <div class="pose-chip" id="rollChip" title="Roll: Sideways tilt (Threshold ±15°)">
+                <div class="pose-chip" id="rollChip" title="Roll: Sideways tilt (Threshold ±10°)">
                   <span class="pose-chip-axis">R</span>
                   <span class="pose-chip-val" id="rollVal">--</span>
                 </div>
@@ -227,30 +174,11 @@
                   <span class="pose-chip-val" id="yawVal">--</span>
                 </div>
               </div>
-              <div class="pose-limits-hint">Limits: P ±5° · R ±15° · Y ±20°</div>
+              <div class="pose-limits-hint">Limits: P ±5° · R ±10° · Y ±20°</div>
             </div>
             <div class="card">
               <div class="label">Risk Level</div>
               <div class="value" id="riskLevel">--</div>
-            </div>
-            <div class="card card-sitting">
-              <div class="label">Continuous Sitting</div>
-              <div class="sitting-card-body">
-                <div class="sitting-ring-wrap">
-                  <svg class="focus-ring sitting-ring" viewBox="0 0 200 200">
-                    <defs>
-                      <linearGradient id="ringGradSit" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stop-color="#38bdf8" />
-                        <stop offset="100%" stop-color="#818cf8" />
-                      </linearGradient>
-                    </defs>
-                    <circle class="focus-ring-bg" cx="100" cy="100" r="90"></circle>
-                    <circle class="focus-ring-progress" id="sitRingProgress" cx="100" cy="100" r="90" stroke="url(#ringGradSit)"></circle>
-                  </svg>
-                  <div class="sitting-time" id="sitTime">--</div>
-                </div>
-                <span class="sit-chip" id="sitChip">DEMO 3 MIN</span>
-              </div>
             </div>
           </div>
 
@@ -274,10 +202,10 @@
               </div>
               <!-- Video Overlay Actions -->
               <div class="camera-overlay-actions">
-                <button type="button" id="camAxesToggleBtn" class="cam-action-btn active" title="Toggle 3D Head Orientation Axes Follow">📐 3D Axes</button>
-                <button type="button" id="camMirrorBtn" class="cam-action-btn" title="Mirror Video">🪞 Mirror</button>
-                <button type="button" id="camSnapshotBtn" class="cam-action-btn" title="Take Snapshot">📸 Snapshot</button>
-                <button type="button" id="camFullscreenBtn" class="cam-action-btn" title="Fullscreen">⛶ Fullscreen</button>
+                <button id="camAxesToggleBtn" class="cam-action-btn active" title="Toggle 3D Head Orientation Axes Follow">📐 3D Axes</button>
+                <button id="camMirrorBtn" class="cam-action-btn" title="Mirror Video">🪞 Mirror</button>
+                <button id="camSnapshotBtn" class="cam-action-btn" title="Take Snapshot">📸 Snapshot</button>
+                <button id="camFullscreenBtn" class="cam-action-btn" title="Fullscreen">⛶ Fullscreen</button>
               </div>
             </div>
             <!-- AI Engine & Camera Source Status Bar -->
@@ -295,11 +223,11 @@
               .cam-action-btn { font-size: 10.5px; padding: 3px 8px; height: 26px; border-radius: 4px; }
             </style>
             <div class="camera-controls">
-              <input type="text" id="streamUrlInput" placeholder="ESP32 IP (e.g. http://192.168.1.35:80/stream)" value="http://192.168.1.35:80/stream" />
-              <button type="button" id="connectCamBtn" class="focus-btn primary">Connect ESP32 Cam</button>
-              <button type="button" id="toggleWebcamBtn" class="focus-btn">Use Browser Webcam</button>
-              <button type="button" id="camCalibrateBtn" class="focus-btn calib-accent-btn" title="Set current head pose as zero reference (0,0,0)">🎯 Calibrate (0,0,0)</button>
-              <button type="button" id="stopCamBtn" class="focus-btn danger">⏹ Stop Stream</button>
+              <input type="text" id="streamUrlInput" placeholder="Nhập IP ESP32 (vd: http://192.168.1.35:80/stream)" value="http://192.168.1.35:80/stream" />
+              <button id="connectCamBtn" class="focus-btn primary">Connect ESP32 Cam</button>
+              <button id="toggleWebcamBtn" class="focus-btn">Use Browser Webcam</button>
+              <button id="camCalibrateBtn" class="focus-btn calib-accent-btn" title="Set current head pose as zero reference (0,0,0)">🎯 Calibrate (0,0,0)</button>
+              <button id="stopCamBtn" class="focus-btn danger">⏹ Stop Stream</button>
             </div>
           </div>
 
@@ -310,64 +238,35 @@
               <div class="chart-wrap"><canvas id="ocularChart"></canvas></div>
             </div>
             <div class="panel">
-              <div class="panel-header">
-                <h2>📏 Distance Telemetry (Camera AI vs Ultrasonic)</h2>
-                <span id="distanceDelta" class="chart-delta"></span>
-              </div>
+              <h2>📏 Distance Telemetry (Camera AI vs Ultrasonic)</h2>
               <div class="chart-wrap"><canvas id="distanceChart"></canvas></div>
             </div>
           </div>
         </div>
 
         <div class="details-side">
-          <div class="panel axis-panel" id="axisPanel">
-            <h2>Posture &amp; Visual Balance</h2>
-            <div class="axis-gauges">
-              <div class="axis-gauge" id="posturalGauge">
-                <div class="axis-gauge-header">
-                  <span>Postural</span>
-                  <strong id="posturalScore">--</strong>
-                </div>
-                <div class="axis-bar"><div class="axis-bar-fill" id="posturalFill"></div></div>
-                <ul class="axis-factors" id="posturalFactors">
-                  <li class="empty">Waiting for readings</li>
-                </ul>
-              </div>
-              <div class="axis-gauge" id="visualGauge">
-                <div class="axis-gauge-header">
-                  <span>Visual</span>
-                  <strong id="visualScore">--</strong>
-                </div>
-                <div class="axis-bar"><div class="axis-bar-fill" id="visualFill"></div></div>
-                <ul class="axis-factors" id="visualFactors">
-                  <li class="empty">Waiting for readings</li>
-                </ul>
-              </div>
-            </div>
-            <div class="timeline-wrap">
-              <svg id="sessionTimeline" class="session-timeline" viewBox="0 0 600 16" preserveAspectRatio="none" aria-label="Session risk timeline"></svg>
-              <p class="timeline-caption">Last 10 min · this session</p>
-            </div>
+          <div class="panel">
+            <h2>Warnings</h2>
+            <ul class="alert-list" id="alertList">
+              <li class="empty">No warnings</li>
+            </ul>
           </div>
 
           <div class="panel advice-panel" id="advicePanel">
             <div class="panel-header">
               <h2>AI Advice</h2>
-              <button type="button" id="analyzeBtn" class="analyze-btn insight-btn">Get Advice</button>
+              <button id="analyzeBtn" class="analyze-btn insight-btn">Get Advice</button>
             </div>
             <p id="analyzeStatus" class="analyze-status"></p>
             <div id="adviceContent" class="advice-content">
-              <p class="empty">Ask the coach to explain this state.</p>
+              <p class="empty">AI advice appears here when risk is elevated.</p>
             </div>
           </div>
 
           <div class="panel insight-panel" id="insightPanel">
             <div class="panel-header">
               <h2>Session Insight</h2>
-              <div class="panel-header-actions">
-                <button type="button" id="sessionReportBtn" class="analyze-btn insight-btn">Session Report</button>
-                <button type="button" id="insightBtn" class="analyze-btn insight-btn">Generate Insight</button>
-              </div>
+              <button id="insightBtn" class="analyze-btn insight-btn">Generate Insight</button>
             </div>
             <p id="insightStatus" class="analyze-status"></p>
             <div id="insightContent" class="advice-content">
@@ -387,7 +286,7 @@
     <div class="settings-panel">
       <div class="settings-header">
         <h2>Settings</h2>
-        <button type="button" id="settingsCloseBtn" class="icon-btn" aria-label="Close settings">✕</button>
+        <button id="settingsCloseBtn" class="icon-btn" aria-label="Close settings">✕</button>
       </div>
 
       <div class="settings-group">
@@ -450,92 +349,12 @@
       </div>
 
       <div class="settings-group">
-        <h3>Sitting</h3>
-        <div class="toggle-row">
-          <span>Demo sitting threshold (3 min)</span>
-          <label class="switch">
-            <input type="checkbox" id="sittingDemoInput" checked />
-            <span class="switch-slider"></span>
-          </label>
-        </div>
-        <p class="settings-hint">On: break suggestion at 3 minutes. Off: 20 minutes.</p>
-      </div>
-
-      <div class="settings-group">
-        <h3>Light sensor calibration</h3>
-        <p class="settings-hint">
-          The LDR reports a raw ADC value; lux is derived from it. Two reference points define the
-          curve — measure the ADC in a dark room and at a normally lit desk, then enter the
-          illuminance you expect at each.
-        </p>
-
-        <div class="settings-row">
-          <span>Wiring</span>
-          <select id="lightCircuitInput" class="settings-select">
-            <option value="ldr_to_vcc">LDR to VCC (ADC rises with light)</option>
-            <option value="ldr_to_gnd">LDR to GND (ADC falls with light)</option>
-          </select>
-        </div>
-        <p class="settings-hint">
-          Cover the sensor with your hand and watch the ADC. Falling means LDR&nbsp;to&nbsp;VCC.
-        </p>
-
-        <div class="settings-row">
-          <span>Fixed resistor</span>
-          <span class="settings-row-value"><input type="number" id="lightRFixedInput" min="1" step="100" class="settings-number" /> Ω</span>
-        </div>
-
-        <div class="calib-grid">
-          <span class="calib-head">Reference point</span>
-          <span class="calib-head">ADC</span>
-          <span class="calib-head">Lux</span>
-
-          <span class="calib-label">Dark room</span>
-          <input type="number" id="lightLowAdcInput" min="0" max="65535" step="1" class="settings-number" />
-          <input type="number" id="lightLowLuxInput" min="0.1" step="0.1" class="settings-number" />
-
-          <span class="calib-label">Lit desk</span>
-          <input type="number" id="lightHighAdcInput" min="0" max="65535" step="1" class="settings-number" />
-          <input type="number" id="lightHighLuxInput" min="0.1" step="1" class="settings-number" />
-        </div>
-
-        <div class="settings-row">
-          <span>Saturation ADC</span>
-          <span class="settings-row-value"><input type="number" id="lightSatInput" min="1" max="65535" step="1" class="settings-number" /></span>
-        </div>
-        <p class="settings-hint">
-          Where the ADC stops rising under brighter light. Readings at or above it are reported as
-          “above range”, never as darkness.
-        </p>
-
-        <div class="calib-readout" id="lightCalibReadout">
-          <div class="calib-stat">
-            <span class="calib-stat-k">Fitted γ</span>
-            <strong class="calib-stat-v" id="lightGammaValue">--</strong>
-          </div>
-          <div class="calib-stat">
-            <span class="calib-stat-k">Usable to</span>
-            <strong class="calib-stat-v" id="lightLinearValue">--</strong>
-          </div>
-          <div class="calib-stat">
-            <span class="calib-stat-k">Ceiling</span>
-            <strong class="calib-stat-v" id="lightCeilingValue">--</strong>
-          </div>
-        </div>
-        <p class="settings-hint" id="lightGammaHint"></p>
-
-        <button type="button" id="lightCalibSaveBtn" class="focus-btn primary">Save calibration</button>
-        <p class="yt-status" id="lightCalibStatus"></p>
-      </div>
-
-      <div class="settings-group">
         <h3>AI limits</h3>
         <div class="settings-row">
-          <span>Manual Get Advice cooldown</span>
+          <span>Advice cooldown</span>
           <span class="settings-row-value"><span id="analyzeCooldownValue">60</span>s</span>
         </div>
         <input type="range" id="analyzeCooldownInput" min="10" max="300" step="10" value="60" />
-        <p class="settings-hint">Applies only to the Get Advice button. Auto reminders use the session governor.</p>
 
         <div class="settings-row">
           <span>Insight cooldown</span>

@@ -1,5 +1,6 @@
 #include "esp_camera.h"
 #include <WiFi.h>
+#include <time.h>
 #include "sensor_manager.h"
 #include "firebase_manager.h"
 
@@ -100,6 +101,7 @@ void setup() {
   setupLedFlash(LED_GPIO_NUM);
 #endif
 
+  // Connect to WiFi with Google DNS (8.8.8.8) to prevent DNS lookup failures for www.googleapis.com
   // Connect to WiFi
   WiFi.setSleep(false);
   WiFi.setAutoReconnect(true);
@@ -113,6 +115,29 @@ void setup() {
   Serial.println("");
   Serial.println("[WiFi] Connected successfully!");
 
+  // Set Google DNS (8.8.8.8) using DHCP assigned IP parameters to fix DNS lookup for googleapis.com
+  IPAddress primaryDNS(8, 8, 8, 8);
+  IPAddress secondaryDNS(8, 8, 4, 4);
+  WiFi.config(WiFi.localIP(), WiFi.gatewayIP(), WiFi.subnetMask(), primaryDNS, secondaryDNS);
+
+  // Synchronize system time via NTP — required for SSL certificate validation
+  configTime(7 * 3600, 0, "pool.ntp.org", "time.google.com");
+  Serial.println("[Time] Waiting for NTP time sync...");
+  struct tm timeinfo;
+  int retry = 0;
+  while (!getLocalTime(&timeinfo) && retry < 10) {
+    delay(1000);
+    Serial.print(".");
+    retry++;
+  }
+  if (retry >= 10) {
+    Serial.println("");
+    Serial.println("[Time] Failed to sync time; SSL operations may fail.");
+  } else {
+    Serial.println("");
+    Serial.printf("[Time] Current time: %s", asctime(&timeinfo));
+  }
+
   // Initialize Firebase Realtime Database
   init_firebase();
   ensure_led_schema();
@@ -125,40 +150,33 @@ void setup() {
 }
 
 void loop() {
-  static unsigned long last_sensor_ms = 0;
-  const unsigned long SENSOR_INTERVAL_MS = 2000;
-
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("[WiFi] Disconnected. Reconnecting...");
     WiFi.disconnect();
     WiFi.begin(ssid, password);
-    apply_led_state_from_firebase();
     delay(2000);
     return;
   }
 
-  // Token may not be ready at the end of setup(); this is a no-op once done.
-  ensure_led_schema();
-  apply_led_state_from_firebase();
+  // Read sensor data (LDR and Ultrasonic)
+  int lightADC = read_light_adc();
+  float lux = read_lux();
+  float distance = read_distance();
 
-  unsigned long now = millis();
-  if (last_sensor_ms == 0 || (now - last_sensor_ms) >= SENSOR_INTERVAL_MS) {
-    last_sensor_ms = now;
-
-    int lightADC = read_light_adc();
-    float lux = read_lux();
-    float distance = read_distance();
-
-    Serial.println("----------------------------------------");
-    Serial.printf("Light ADC : %d | Lux : %.2f lux\n", lightADC, lux);
-    if (distance < 0) {
-      Serial.println("Distance  : No echo");
-    } else {
-      Serial.printf("Distance  : %.2f cm\n", distance);
-    }
-
-    upload_sensor_data_to_firebase(lightADC, lux, distance);
+  Serial.println("----------------------------------------");
+  Serial.printf("Light ADC : %d | Lux : %.2f lux\n", lightADC, lux);
+  if (distance < 0) {
+    Serial.println("Distance  : No echo");
+  } else {
+    Serial.printf("Distance  : %.2f cm\n", distance);
   }
 
-  delay(20);
+  // Apply LED and buzzer state from Firebase to local hardware
+  apply_led_state_from_firebase();
+
+  // Upload sensor data to Firebase Realtime Database
+  upload_sensor_data_to_firebase(lightADC, lux, distance);
+
+  // Wait 2 seconds between sensor readings
+  delay(2000);
 }

@@ -15,6 +15,14 @@ void init_sensors() {
     pinMode(GREEN_LED, OUTPUT);
     digitalWrite(LED_RED, LOW);
     digitalWrite(GREEN_LED, LOW);
+
+#if defined(BUZZER_PIN)
+    pinMode(BUZZER_PIN, OUTPUT);
+    digitalWrite(BUZZER_PIN, LOW);
+    Serial.printf("[GPIO] LED_RED=%d | GREEN_LED=%d | BUZZER_PIN=%d\n", LED_RED, GREEN_LED, BUZZER_PIN);
+#else
+    Serial.printf("[GPIO] LED_RED=%d | GREEN_LED=%d | BUZZER_PIN=not defined\n", LED_RED, GREEN_LED);
+#endif
 }
 
 int read_light_adc() {
