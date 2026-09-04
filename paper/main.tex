@@ -1,0 +1,144 @@
+\documentclass{article}
+
+
+\usepackage{PRIMEarxiv}
+\usepackage{amsmath}
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{fancyhdr}       % header
+\usepackage{graphicx}       % graphics
+\usepackage{array}
+\graphicspath{{media/}{image/}{./}}
+
+%Header
+\pagestyle{fancy}
+\thispagestyle{empty}
+\rhead{ \textit{ }}
+
+% Update your Headers here
+\fancyhead[LO]{PostureCare: IoT--LLM Ergonomic Screening}
+% \fancyhead[RE]{Firstauthor and Secondauthor} % Firstauthor et al. if more than 2 - must use \documentclass[twoside]{article}
+
+
+
+
+%% Title
+\title{An Edge Vision IoT--LLM Framework Integrating Multimodal Sensing and Bounded LLM Feedback for Continuous Ergonomic Risk Screening During Computer Use
+%%%% Cite as
+%%%% Update your official citation here when published
+\thanks{\textit{\underline{Citation}}:
+\textbf{Khoi. et al. Title. Pages.... DOI:000000/11111.}}
+}
+
+\author{
+  Alire Alimu \\
+  Shibaura Institute of Technology \\
+  Tokyo, Japan \\
+  %% \texttt{email@email}
+  \And
+  Wang-Lin Lin \\
+  Ming Chi University of Technology \\
+  New Taipei City, Taiwan \\
+  \AND
+  Tran Thi My Duyen \\
+  Hanoi University of Science and Technology \\
+  Hanoi, Vietnam \\
+  \And
+  Vu Duc Tai \\
+  Hanoi University of Science and Technology \\
+  Hanoi, Vietnam \\
+  \AND
+  Yuto Hashimoto \\
+  Shibaura Institute of Technology \\
+  Tokyo, Japan \\
+  \And
+  Wakako Hashimoto \\
+  Shibaura Institute of Technology \\
+  Tokyo, Japan \\
+  \AND
+  Nguyen Tuan Tu \\
+  Vietnam National University \\
+  Hanoi, Vietnam \\
+  \And
+  Khoi Do Duc \\
+  Phenikaa University \\
+  Hanoi, Vietnam \\
+}
+
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Prolonged computer usage among students and office workers is associated with musculoskeletal discomfort, particularly in the cervical and upper-back regions, and with the visual symptoms grouped under Computer Vision Syndrome (CVS). Existing ergonomic monitoring systems are commonly limited by single-factor analysis---focusing on posture or viewing distance alone---or depend on body-worn sensors and instrumented furniture. Equally important, systems that do combine sensing with AI-generated feedback generally stop at producing advice: they neither manage how often a user should be interrupted nor record whether the advice was acted upon. This paper presents \textbf{PostureCare}, an Edge Vision IoT--LLM framework built on a \textbf{Freenove ESP32-S3} microcontroller with an \textbf{OV3660} image sensor, an ultrasonic rangefinder, and a photoresistor. \textbf{MediaPipe} and \textbf{OpenCV} provide 3D head pose (Pitch, Yaw, Roll), Eye Aspect Ratio (EAR) and blink rate, while the physical sensors supply eye-to-screen distance and workspace illuminance. Rather than acting on instantaneous threshold crossings, detections are qualified by a persistence layer and classified by a four-tier severity model, and a \textbf{notification governor} converts qualified states into a bounded number of interventions using flag-set deduplication, exponential backoff, escalation, and user-controlled snooze and do-not-disturb. A cloud-based \textbf{Large Language Model} translates the fused state into a short, context-aware corrective recommendation delivered through a real-time web dashboard, synthesised speech, and a device-level indicator, operating within bounds set by the deterministic layers rather than deciding on its own when the user should be interrupted. This paper reports the architecture, the qualification and severity model, the governor mechanism, and the realised implementation, together with a full evaluation protocol. That protocol has not been executed: no measurement of detection accuracy, sensor calibration, interruption load, or user outcome is reported here. The contribution is accordingly a design and its implementation, not a validated clinical or behavioural result.
+\end{abstract}
+
+
+% keywords can be removed
+\keywords{Computer Vision Syndrome \and Ergonomics \and ESP32-S3 \and IoT \and Large Language Models \and Musculoskeletal Disorders \and Multimodal Sensing \and Notification Management}
+
+
+
+\section{Introduction}
+
+\input{Introduction}
+
+
+
+\section{Literature review}
+\label{sec:litreview}
+
+\input{literature_review}
+
+\section{Proposed System Architecture and Methodology}
+\label{sec:proposed_system}
+
+
+\input{research_design}
+
+
+\section{Implementation}
+\label{sec:implementation}
+
+\input{implementation}
+
+
+\section{Planned Evaluation Protocol}
+\label{sec:protocol}
+
+\input{evaluation_protocol}
+
+
+\section{Discussion}
+\label{sec:discussion}
+
+\input{discussion}
+
+
+\section{Limitations}
+\label{sec:limitations}
+
+\input{limitations}
+
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+\input{conclusion}
+
+
+\section*{Acknowledgments}
+This was was supported in part by......
+
+%Bibliography
+\bibliographystyle{unsrt}
+\bibliography{references}
+
+
+\end{document}

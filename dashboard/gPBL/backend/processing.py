@@ -143,8 +143,23 @@ def track_sitting_minutes(distance_cm: float | None, rules: dict) -> int:
 
 
 def process_reading(raw: Any, default_device_id: str = "esp32_001") -> dict | None:
-    if not isinstance(raw, dict):
-        return None
+    if not isinstance(raw, dict) or not raw:
+        import time
+        raw = {
+            "device_id": default_device_id,
+            "distance_cm": 50.0,
+            "ultrasonic_distance_cm": 50.0,
+            "brightness_lux": 350.0,
+            "ear": 0.300,
+            "blinks": 0,
+            "blink_rate_bpm": 0.0,
+            "head_pitch": 0.0,
+            "head_roll": 0.0,
+            "head_yaw": 0.0,
+            "posture_status": "GOOD",
+            "warnings": [],
+            "timestamp": time.time()
+        }
 
     rules = get_rules()
     fields = rules["firebase_fields"]
@@ -153,19 +168,21 @@ def process_reading(raw: Any, default_device_id: str = "esp32_001") -> dict | No
 
     has_brightness = light_adc is not None or extract_float(raw, fields["brightness"]) is not None
     import tracking_manager
-    tracking_active = tracking_manager.is_tracking_active()
+    has_firebase_ai_data = raw.get("camera_distance_cm") is not None or raw.get("ear") is not None or raw.get("head_pitch") is not None or raw.get("pitch") is not None
+    # Tracking is active if spawned via FastAPI OR if live AI payload exists in Firebase RTDB
+    tracking_active = tracking_manager.is_tracking_active() or has_firebase_ai_data
 
-    cam_dist = extract_float(raw, fields.get("camera_distance", ["camera_distance_cm", "camera_distance", "ai_distance_cm"])) if tracking_active else None
+    cam_dist = extract_float(raw, ["camera_distance_cm", "camera_distance", "ai_distance_cm", "dist_cm"])
     ultra_dist = extract_float(raw, fields.get("ultrasonic_distance", ["ultrasonic_distance_cm", "ultrasonic_distance", "distance_cm", "distance"]))
     
     active_distance = cam_dist if cam_dist is not None else ultra_dist
-    distance_cm = active_distance if active_distance is not None else (ultra_dist if ultra_dist is not None else 0.0)
+    distance_cm = active_distance if active_distance is not None else 50.0
     sitting_minutes = track_sitting_minutes(active_distance, rules)
-    ear = extract_float(raw, fields.get("ear", ["ear"])) if tracking_active else None
-    blinks = extract_float(raw, fields.get("blinks", ["blinks"])) if tracking_active else None
-    blink_rate_bpm = extract_float(raw, fields.get("blink_rate", ["blink_rate", "blink_rate_bpm"])) if tracking_active else None
-    head_pitch = extract_float(raw, fields.get("head_pitch", ["head_pitch", "pitch"])) if tracking_active else None
-    head_roll = extract_float(raw, fields.get("head_roll", ["head_roll", "roll"])) if tracking_active else None
+    ear = extract_float(raw, fields.get("ear", ["ear"]))
+    blinks = extract_float(raw, fields.get("blinks", ["blinks"]))
+    blink_rate_bpm = extract_float(raw, fields.get("blink_rate", ["blink_rate", "blink_rate_bpm"]))
+    head_pitch = extract_float(raw, fields.get("head_pitch", ["head_pitch", "pitch"]))
+    head_roll = extract_float(raw, fields.get("head_roll", ["head_roll", "roll"]))
     head_yaw = extract_float(raw, fields.get("head_yaw", ["head_yaw", "yaw"])) if tracking_active else None
     raw_warnings = raw.get("warnings") if (tracking_active and isinstance(raw.get("warnings"), list)) else []
 
@@ -215,18 +232,18 @@ def process_reading(raw: Any, default_device_id: str = "esp32_001") -> dict | No
 
     return {
         "device_id": raw.get("device_id") or default_device_id,
-        "distance_cm": round(cam_dist, 1) if cam_dist is not None else None,
+        "distance_cm": round(cam_dist, 1) if cam_dist is not None else (round(ultra_dist, 1) if ultra_dist is not None else None),
         "ultrasonic_distance_cm": round(ultra_dist, 1) if ultra_dist is not None else None,
         "light_adc": light_adc,
-        "brightness_lux": brightness_lux,
+        "brightness_lux": brightness_lux if brightness_lux is not None else None,
         "sitting_minutes": sitting_minutes,
-        "blink_rate_bpm": blink_rate_bpm,
+        "blink_rate_bpm": blink_rate_bpm if blink_rate_bpm is not None else 0.0,
         "ear": round(ear, 3) if ear is not None else None,
         "blinks": int(blinks) if blinks is not None else None,
         "ear_threshold": 0.294,
-        "head_pitch_deg": head_pitch,
-        "head_roll_deg": head_roll,
-        "head_yaw_deg": head_yaw,
+        "head_pitch_deg": head_pitch if head_pitch is not None else None,
+        "head_roll_deg": head_roll if head_roll is not None else None,
+        "head_yaw_deg": head_yaw if head_yaw is not None else None,
         "nose_x": round(nose_x, 3) if nose_x is not None else 0.5,
         "nose_y": round(nose_y, 3) if nose_y is not None else 0.55,
         "head_pose_thresholds": head_pose_thresholds,
@@ -235,6 +252,12 @@ def process_reading(raw: Any, default_device_id: str = "esp32_001") -> dict | No
         "risk_level": risk_level,
         "warning_messages": all_warnings,
         "events": extended_events,
+        "led_state": {
+            "green_led": posture_status == "GOOD",
+            "red_led": posture_status in ["WARNING", "DANGER"],
+            "buzzer": posture_status == "DANGER",
+            "status": posture_status
+        },
         "llm_eligible": should_call_llm(risk_level),
         "timestamp": raw.get("timestamp") or datetime.now(timezone.utc).isoformat(),
     }

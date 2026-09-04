@@ -1,0 +1,124 @@
+
+
+Computer-use ergonomics involves interactions among work duration, visual conditions, workstation arrangement, posture, and individual behavior. Previous monitoring systems commonly examine only one or two of these factors~\cite{ref14,ref15,ref16,ref17}. This review therefore organizes the relevant literature by research theme and identifies the limitations addressed by the proposed \textbf{PostureCare} system.
+
+\subsection{Computer Use and Musculoskeletal Problems}
+Prolonged computer work has consistently been associated with discomfort in the neck, shoulders, upper back, and lower back~\cite{ref2}. Demissie et al. identified the lower back, neck, upper back, and shoulders as the body regions most frequently affected among computer users~\cite{ref2}. Reported risk factors included prolonged computer use, awkward posture, repetitive movement, and remaining in the same position for extended periods~\cite{ref2}. Workstation characteristics have also been associated with neck-pain intensity among office workers, indicating that computer-related discomfort depends not only on total exposure but also on how the workstation is arranged~\cite{ref6}.
+
+Duration is particularly important because computer work frequently involves sustained, low-variation postures~\cite{ref18}. A meta-analysis of 25 studies involving 43,184 participants found an association between sedentary behavior and neck pain ($\text{OR} = 1.46$). Computer use was independently associated with greater neck-pain risk ($\text{OR} = 1.23$), while the association became stronger when sedentary duration reached at least four hours per day ($\text{OR} = 1.60$) or six hours per day ($\text{OR} = 1.88$)~\cite{ref12}. These findings support treating cumulative duration as part of ergonomic exposure rather than evaluating posture from a single image.
+
+Static posture may maintain tension in the cervical and upper-back musculature even when the posture is only moderately different from neutral~\cite{ref18}. Repeated or prolonged exposure can consequently be more meaningful than a brief postural deviation~\cite{ref2,ref12}. Continuous monitoring could identify increasing exposure and encourage corrective action before occasional discomfort becomes persistent. However, much of the existing evidence is observational and relies on self-reported computer use and symptoms; it establishes population-level associations but does not support individual clinical prediction~\cite{ref2,ref6,ref12}.
+
+\subsection{Viewing Distance and Visual Ergonomics}
+Digital eye strain is influenced by viewing distance, screen position, text size, task demand, glare, blinking behavior, and uncorrected visual conditions~\cite{ref1,ref11}. Viewing distance should therefore not be treated as an isolated value or as having one universally optimal threshold. A user who cannot comfortably read screen content may compensate by leaning forward, flexing the neck, or moving the entire trunk toward the display~\cite{ref5}.
+
+Rempel et al. examined 24 participants during two-hour computer tasks at mean viewing distances of $52.4$, $73.0$, and $85.3~\text{cm}$~\cite{ref5}. When the monitor was placed at the farthest distance while character size remained unchanged, participants moved their heads and torsos closer to the display~\cite{ref5}. The authors recommended a distance between approximately $52$ and $73~\text{cm}$ when character size is close to the user's visual-acuity limit~\cite{ref5}. This result demonstrates that a greater distance is not automatically more ergonomic: distance, text readability, and compensatory posture must be interpreted together.
+
+Hashimoto et al. further demonstrated the relationship between viewing behavior and cervical alignment~\cite{ref4}. Using three-dimensional motion analysis in 21 participants, the researchers found that head angle and visual distance were strongly associated with $C_2$--$C_7$ and $C_7$--$T_3$ sagittal alignment. The respective correlation coefficients reached $0.8861$ and $0.8460$ when head angle and viewing distance were used together, whereas correlations with thoracic and lumbar alignment were substantially lower~\cite{ref4}. These results support including an independent distance sensor rather than estimating distance solely from face size in a camera image.
+
+Visual behavior provides related but distinct information. Chidi-Egboka et al. found that blink rate decreased during reading from both printed and digital materials, regardless of viewing distance~\cite{ref9}. Lapa et al. also demonstrated that webcam-based blink monitoring was feasible in real-life computer-use settings and reported an association between lower blink rate and higher computer-vision-syndrome scores~\cite{ref10}. Blink rate may therefore indicate visual task demand, but it cannot substitute for direct distance measurement~\cite{ref9,ref10}. The principal limitation of previous work is that viewing distance is often measured only during controlled experiments or inferred indirectly; few posture-monitoring systems continuously combine direct distance measurement with posture and exposure duration~\cite{ref4,ref5,ref17,ref19}.
+
+
+
+
+\subsection{Lighting and Workstation Environment}
+Lighting at a computer workstation involves more than ambient illuminance. Relevant factors include screen luminance, contrast between the screen and its surroundings, glare, reflections, light-source direction, surface reflectance, and the visual characteristics of the user~\cite{ref7}. Osterhaus et al. emphasized that these factors interact and should be considered together when evaluating visual comfort during computer work~\cite{ref7}. Experimental evidence has also demonstrated that luminance and illuminance conditions can affect visual fatigue and arousal during digital reading~\cite{ref20}.
+
+Lighting may also influence posture indirectly. In a repeated laboratory experiment involving 43 participants, Mork et al. found that exposure to direct glare produced greater forward bending of the head and changes in trapezius muscle blood flow during computer work~\cite{ref21}. This provides a plausible pathway in which an unfavorable visual environment produces squinting or repositioning, which subsequently changes head and upper-body loading~\cite{ref21}.
+
+For the proposed system, ambient-light measurements should be interpreted as contextual information. For example, poor posture detected under very low ambient illumination may lead to a recommendation to improve lighting and screen readability, whereas the same posture under adequate lighting may require adjustment of viewing distance or screen height. Nevertheless, a single illuminance sensor cannot directly measure glare, reflections, screen luminance, or individual visual ability; lighting should therefore remain a contextual ergonomic variable rather than a diagnostic indicator of musculoskeletal risk~\cite{ref7}.
+
+\subsection{Sitting Posture and Ergonomic Risk}
+Postural factors relevant to computer use include forward-head position, excessive neck flexion, trunk flexion, slouching, lateral trunk lean, and shoulder asymmetry~\cite{ref4,ref17,ref19,ref22}. Head angle and viewing distance can provide useful information about cervical alignment~\cite{ref4}, but the relationship between visible posture and pain is not deterministic. For example, Sarig Bahat et al. did not find a clinically applicable association between forward-head posture and pain intensity or disability in a sample of participants with and without nonspecific neck pain~\cite{ref22}. Postural measurements should consequently be treated as exposure indicators rather than proof of an existing disorder.
+
+The variables that can be measured depend strongly on camera position. A front-facing camera installed near the monitor can reliably observe frontal-plane relationships but has limited information about sagittal depth~\cite{ref16}.
+
+\begin{table}[htbp]
+\caption{Feasibility and Recommended Interpretation of Measurable Postural Variables}
+\label{tab:posture_variables_detail}
+\centering
+\small
+\begin{tabular}{@{}p{4.6cm}cp{5.6cm}@{}}
+\toprule
+\textbf{Posture Variable} & \textbf{Front-Camera Feasibility} & \textbf{Recommended Interpretation} \\
+\midrule
+Left--right shoulder-height difference & High & Shoulder-asymmetry indicator \\
+Lateral head tilt or roll & High & Deviation from an individual neutral baseline \\
+Head rotation or yaw & Moderate & Detect sustained rotation away from the screen \\
+Lateral trunk lean & Moderate to high & Upper-body asymmetry indicator (if torso is visible) \\
+Head position relative to shoulder midpoint & Moderate & Detect lateral displacement and large vertical changes \\
+Forward-head displacement & Limited & Use only as a calibrated proxy \\
+Neck flexion or head pitch & Limited to moderate & Estimate from facial orientation, not as a true cervical angle \\
+Trunk flexion or slouching & Limited & Use shoulder and face displacement as indirect indicators \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Personal calibration can improve interpretation by recording the user's neutral face and shoulder positions before monitoring begins~\cite{ref19}. The external distance sensor can also distinguish actual movement toward the screen from apparent changes caused by image scale. The main limitation is that a front-facing monocular camera cannot directly measure sagittal cervical and trunk angles; it can monitor visible postural proxies but cannot diagnose forward-head posture, spinal deformity, or musculoskeletal disease~\cite{ref16}.
+
+\subsection{Computer Vision-Based Posture Detection}
+RGB-camera monitoring offers a noncontact and comparatively low-cost approach to posture assessment~\cite{ref16,ref19,ref23,ref24}. OpenPose detects two-dimensional body, hand, facial, and foot landmarks and supports multi-person pose estimation~\cite{ref23}. MediaPipe BlazePose is designed for lighter on-device inference and estimates 33 body landmarks for a single person, making it more suitable for mobile or edge-oriented applications~\cite{ref24}. Both approaches convert RGB images into anatomical landmark coordinates from which joint angles, alignment ratios, and posture classes can be calculated~\cite{ref23,ref24}.
+
+PoseX demonstrated a computer-work-specific application using an ordinary webcam and OpenPose landmarks~\cite{ref19}. The system used proportional relationships among face width, shoulder width, and ear-to-shoulder height to recognize normal posture, cervical kyphosis, thoracic kyphosis, and raised shoulders. In an experiment involving 15 participants at viewing distances of $60$, $85$, and $110~\text{cm}$, the system achieved at least $84\%$ classification accuracy after a short personal calibration~\cite{ref19}. This supports the feasibility of personalized webcam-based posture classification but also demonstrates the dependence of image features on viewing distance.
+
+Camera placement can materially affect measurement accuracy~\cite{ref16}. Murugan et al. compared MediaPipe BlazePose, VideoPose3D, 3D-pose-baseline, and PSTMO against reference measurements. The side-camera position produced the lowest mean absolute error across static and dynamic tasks, while the VideoPose3D full-body configuration performed best among the evaluated models~\cite{ref16}. Validation should therefore include multiple distances, lighting conditions, participant body sizes, clothing conditions, and partial occlusion. Appropriate outcomes include classification accuracy, precision, recall, F1-score, angular mean absolute error, and agreement with manually annotated or motion-capture measurements.
+
+Camera-based monitoring is feasible, but most reported systems concentrate on posture classification alone~\cite{ref16,ref17,ref19}. Their principal limitations are small controlled datasets, sensitivity to camera position and occlusion, limited depth information, and the infrequent integration of independently measured distance, lighting, and cumulative exposure~\cite{ref16,ref17,ref19}.
+
+\subsection{Sensor-Based Ergonomic Monitoring}
+Nonvisual sensors can complement the limitations of monocular cameras. A distance sensor provides direct proximity measurement without relying on face size or camera calibration. A light sensor records changes in the workstation environment, while a timer converts individual posture events into cumulative exposure measures. IMUs can measure orientation and motion without depending on lighting, although they require attachment to the body and may experience calibration drift~\cite{ref13}.
+
+Sen et al. developed ERG-AI using 2,913 hours of data collected from 114 home-care workers wearing five tri-axial accelerometers. The system predicted occupational postures and estimated prediction uncertainty. Reducing the number of sensors improved wearability and potential energy efficiency but increased uncertainty and reduced the ability to distinguish more complex movements~\cite{ref14}. This illustrates the tradeoff between sensing completeness and practical deployment.
+
+Pressure-based systems offer another alternative. Odesola et al. integrated two $32 \times 32$ pressure-sensor mats into an office chair and trained models to distinguish 19 sitting postures. Their convolutional neural network achieved $98.29\%$ accuracy, and the resulting SitWell platform provided posture-duration analytics and personalized feedback~\cite{ref15}. However, the model was tailored using data from one individual, and the sensing hardware was tied to a particular chair.
+
+Compared with multi-IMU systems, motion-capture equipment, or high-resolution pressure mats, a low-cost combination of RGB imaging, distance sensing, ambient-light sensing, and time logging is less intrusive and easier to install at an ordinary workstation. The central limitation is that low-cost sensor fusion requires careful calibration, synchronization, missing-data handling, and validation against reliable reference measurements before its combined risk indicators can be trusted.
+
+\subsection{AI-Based Ergonomic Feedback}
+The simplest feedback systems use fixed rules, such as issuing an alert when the viewing distance falls below a threshold or when poor posture continues for a specified duration. Rule-based feedback is computationally efficient and transparent, but repeated generic warnings may not explain the source of the problem or tell the user which workstation component should be adjusted. Experimental posture-correction systems have shown that real-time feedback can improve neck and trunk posture and reduce unnecessary muscle activity during computer work~\cite{ref25}.
+
+More adaptive systems incorporate personal baselines, historical exposure, and contextual measurements. ERG-AI transformed sensor-derived posture predictions and their uncertainty estimates into prompts for GPT-4 and LLaMA-based models. An ergonomics professional judged the resulting assessments to be generally meaningful and balanced, although the recommendations required greater specificity and additional personal information~\cite{ref14}. SitWell similarly used GPT-4o to generate recommendations from an individual's historical posture data~\cite{ref15}.
+
+The value of an LLM in PostureCare is therefore not to replace sensor analysis or diagnose a disorder. Its role is to translate verified measurements into an understandable explanation. Instead of stating only ``poor posture detected,'' the system could explain that the user has remained closer than their calibrated viewing range while leaning toward the display and suggest increasing text size, moving the screen, or returning to the calibrated sitting position. Recommendations should be generated from structured sensor summaries and restricted to approved ergonomic actions.
+
+Current LLM-based ergonomic systems remain limited by insufficient user studies, uncertain long-term behavior change, possible unsupported recommendations, and little clinical-outcome validation; the proposed LLM must therefore operate as a bounded explanation and recommendation layer rather than an autonomous medical decision-maker~\cite{ref14,ref15,ref17}.
+
+\subsection{Literature Review Summary and Positioning of the Proposed Study}
+Previous studies demonstrate the feasibility of monitoring computer-use ergonomics through RGB-camera posture detection~\cite{ref16,ref19,ref23,ref24}, wearable sensors~\cite{ref13,ref14}, pressure-sensing furniture~\cite{ref15}, distance measurement~\cite{ref4,ref5,ref6}, and posture-correction feedback~\cite{ref14,ref15,ref25}. Nevertheless, these approaches commonly concentrate on only one or two dimensions of ergonomic exposure. Camera systems are generally posture-centric, wearable systems require body-mounted devices, and smart-chair systems depend on specialized furniture.
+
+\begin{table}[htbp]
+\caption{Comparison of Existing Ergonomic Monitoring Approaches and the Proposed PostureCare System}
+\label{tab:approach_comparison}
+\centering
+\small
+\begin{tabular}{@{}lcccccccc@{}}
+\toprule
+& \multicolumn{5}{c}{\textbf{Sensing and feedback}} & \multicolumn{3}{c}{\textbf{Intervention management}} \\
+\cmidrule(lr){2-6} \cmidrule(l){7-9}
+\textbf{Approach} & \textbf{Post.} & \textbf{Dist.} & \textbf{Light} & \textbf{Dur.} & \textbf{AI fb.}
+& \textbf{Persist.} & \textbf{Notif.} & \textbf{Outcome} \\
+\midrule
+Camera posture system          & Yes & Usually no & No  & Sometimes & Limited   & No & No & No \\
+Wearable system                & Yes & Usually no & No  & Often     & Limited   & No & No & No \\
+Distance-only monitoring       & No  & Yes        & No  & Sometimes & No        & No & No & No \\
+Smart chair / pressure sensing & Yes & No         & No  & Often     & Sometimes & No & No & No \\
+\textbf{Proposed PostureCare}  & \textbf{Yes} & \textbf{Yes} & \textbf{Yes} & \textbf{Yes} & \textbf{Yes}
+& \textbf{Yes} & \textbf{Yes} & \textbf{Yes} \\
+\bottomrule
+\end{tabular}
+\par\medskip
+\footnotesize
+\begin{minipage}{0.95\linewidth}
+\textit{Persist.}: a detection must hold for a minimum duration before it is acted upon.
+\textit{Notif.}: deduplication, backoff, escalation, and user-controlled suppression.
+\textit{Outcome}: the system records whether a delivered recommendation was followed by a correction.
+\end{minipage}
+\end{table}
+
+PostureCare is positioned as an integrated early ergonomic-risk monitoring and feedback system. The RGB camera provides observable frontal-posture indicators, the distance sensor independently measures eye-to-screen proximity, the light sensor records environmental context, and time-series processing quantifies cumulative exposure. The LLM then converts these verified measurements into context-specific explanations and practical adjustment suggestions.
+
+Two gaps therefore remain open, and the proposed system addresses both. The first is integration: no reviewed system combines postural, ocular, environmental and temporal channels on a single non-contact node. The second, visible in the rightmost columns of Table~\ref{tab:approach_comparison}, is intervention management. Every approach reviewed here acts on a detection as soon as it occurs, reports detection performance, and stops. None requires a detection to persist before acting on it, none bounds how often the same condition may interrupt the user, and none records whether a delivered recommendation was followed by a correction. Since repeated undifferentiated warnings are what lead users to disable ergonomic software, converting continuous detection into a bounded and measurable set of interventions is a distinct problem from sensing accurately, and it is where this work concentrates.
+
+The intended contribution is the integration and interpretation of several low-cost measurements, together with the mechanism that governs how those measurements reach the user, rather than the invention of a new clinical diagnostic method. The proposed system addresses the limited integration of posture, viewing distance, visual behavior, lighting context, and exposure duration identified in previous work~\cite{ref4,ref5,ref6,ref7,ref8,ref9,ref10,ref12,ref14,ref15,ref16,ref17,ref19,ref20,ref21,ref22,ref23,ref24,ref25}.
+
+

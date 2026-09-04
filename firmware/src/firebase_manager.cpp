@@ -35,27 +35,17 @@ void upload_sensor_data_to_firebase(int light_adc, float lux, float distance) {
         return;
     }
 
-    // Upload Light ADC
-    if (Firebase.RTDB.setInt(&fbdo, "/sensor_data/light_adc", light_adc)) {
-        Serial.println("[Firebase] Upload light ADC: OK");
-    } else {
-        Serial.printf("[Firebase] Upload light ADC ERROR: %s\n", fbdo.errorReason().c_str());
-    }
-
-    // Upload Lux
-    if (Firebase.RTDB.setFloat(&fbdo, "/sensor_data/lux", lux)) {
-        Serial.println("[Firebase] Upload lux: OK");
-    } else {
-        Serial.printf("[Firebase] Upload lux ERROR: %s\n", fbdo.errorReason().c_str());
-    }
-
-    // Upload Distance
+    FirebaseJson json;
+    json.set("light_adc", light_adc);
+    json.set("lux", lux);
     if (distance >= 0) {
-        if (Firebase.RTDB.setFloat(&fbdo, "/sensor_data/distance", distance)) {
-            Serial.println("[Firebase] Upload distance: OK");
-        } else {
-            Serial.printf("[Firebase] Upload distance ERROR: %s\n", fbdo.errorReason().c_str());
-        }
+        json.set("distance", distance);
+    }
+
+    if (Firebase.RTDB.setJSON(&fbdo, "/sensor_data", &json)) {
+        Serial.println("[Firebase] Upload sensor_data: OK");
+    } else {
+        Serial.printf("[Firebase] Upload sensor_data ERROR: %s\n", fbdo.errorReason().c_str());
     }
 }
 
@@ -66,17 +56,19 @@ void ensure_led_schema() {
 
     // Check if led_state exists
     if (Firebase.RTDB.getJSON(&fbdo, "/led_state")) {
-        Serial.println("[Firebase] /led_state exists");
+        Serial.println("[Firebase] /led_state schema exists");
         return;
     }
 
-    // Create default schema with both LEDs off (but firmware will only use red)
+    // Create default schema used by the app:
+    // led_state/red_led, led_state/green_led, led_state/buzzer
     FirebaseJson json;
-    json.set("red", false);
-    json.set("green", false);
+    json.set("green_led", true);
+    json.set("red_led", false);
+    json.set("buzzer", false);
 
     if (Firebase.RTDB.setJSON(&fbdo, "/led_state", &json)) {
-        Serial.println("[Firebase] Created /led_state schema");
+        Serial.println("[Firebase] Created /led_state with green_led/red_led/buzzer");
     } else {
         Serial.printf("[Firebase] Failed to create /led_state: %s\n", fbdo.errorReason().c_str());
     }
@@ -84,16 +76,41 @@ void ensure_led_schema() {
 
 void apply_led_state_from_firebase() {
     if (!Firebase.ready()) {
+        Serial.println("[Firebase] Not ready, LED state not applied.");
         return;
     }
 
-    // Only read the red state and apply it. Keep green LED off.
-    if (Firebase.RTDB.getBool(&fbdo, "/led_state/red")) {
-        bool redState = fbdo.to<bool>();
-        digitalWrite(LED_RED, redState ? HIGH : LOW);
-        digitalWrite(GREEN_LED, LOW);
-        Serial.printf("[Firebase] Applied led_state/red = %s\n", redState ? "ON" : "OFF");
+    bool greenOn = false;
+    bool redOn = false;
+    bool buzzerOn = false;
+
+    if (Firebase.RTDB.getBool(&fbdo, "/led_state/green_led")) {
+        greenOn = fbdo.to<bool>();
     } else {
-        Serial.printf("[Firebase] Failed to read /led_state/red: %s\n", fbdo.errorReason().c_str());
+        Serial.printf("[Firebase] Failed to read /led_state/green_led: %s\n", fbdo.errorReason().c_str());
     }
+
+    if (Firebase.RTDB.getBool(&fbdo, "/led_state/red_led")) {
+        redOn = fbdo.to<bool>();
+    } else {
+        Serial.printf("[Firebase] Failed to read /led_state/red_led: %s\n", fbdo.errorReason().c_str());
+    }
+
+    if (Firebase.RTDB.getBool(&fbdo, "/led_state/buzzer")) {
+        buzzerOn = fbdo.to<bool>();
+    } else {
+        Serial.printf("[Firebase] Failed to read /led_state/buzzer: %s\n", fbdo.errorReason().c_str());
+    }
+
+    // Read Firebase bools and drive GPIO pins directly.
+    digitalWrite(LED_RED, redOn ? HIGH : LOW);
+    digitalWrite(GREEN_LED, greenOn ? HIGH : LOW);
+#if defined(BUZZER_PIN)
+    digitalWrite(BUZZER_PIN, buzzerOn ? HIGH : LOW);
+#endif
+
+    Serial.printf("[Firebase LED] green_led=%s | red_led=%s | buzzer=%s\n",
+                  greenOn ? "ON" : "OFF",
+                  redOn ? "ON" : "OFF",
+                  buzzerOn ? "ON" : "OFF");
 }

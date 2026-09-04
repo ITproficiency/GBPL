@@ -1,19 +1,133 @@
+import os
+os.environ["GLOG_minloglevel"] = "3"
+import warnings
+warnings.filterwarnings("ignore")
+
 import numpy as np
 import cv2 as cv
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from FaceMeshModule import FaceMeshGenerator
 from utils import DrawingUtils, ThreadedVideoStream
-import os
 import threading
 import time
 import json
+import ssl
 import urllib.request
+import http.server
+import socketserver
+from collections import deque
+from pathlib import Path
+
+_latest_frame_lock = threading.Lock()
+
+# Create default connecting placeholder JPEG to prevent HTTP stream timeouts
+try:
+    _placeholder_img = np.zeros((480, 640, 3), dtype=np.uint8)
+    cv.putText(_placeholder_img, "CONNECTING TO CAMERA...", (140, 240),
+               cv.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2, cv.LINE_AA)
+    _, _placeholder_buf = cv.imencode('.jpg', _placeholder_img)
+    _latest_jpeg_bytes = _placeholder_buf.tobytes()
+except Exception:
+    _latest_jpeg_bytes = None
+
+class MJPEGStreamHandler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path in ['/stream', '/video_feed', '/']:
+            self.send_response(200)
+            self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=frame')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            try:
+                while True:
+                    with _latest_frame_lock:
+                        frame_bytes = _latest_jpeg_bytes
+                    if frame_bytes is not None:
+                        self.wfile.write(b'--frame\r\n')
+                        self.wfile.write(b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+                    time.sleep(0.04)
+            except Exception:
+                pass
+        else:
+            self.send_error(404)
+
+    def log_message(self, format, *args):
+        pass  # Suppress HTTP access logs
+
+def start_mjpeg_server(port=8089):
+    default_port = port
+    for p in [default_port, default_port + 1, default_port + 2]:
+        try:
+            class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+                daemon_threads = True
+                allow_reuse_address = True
+
+            server = ThreadedHTTPServer(('0.0.0.0', p), MJPEGStreamHandler)
+            t = threading.Thread(target=server.serve_forever, daemon=True)
+            t.start()
+            print(f"📡 [MJPEG STREAM SERVER] Relaying AI video feed at http://127.0.0.1:{p}/stream")
+            return p
+        except Exception as e:
+            print(f"⚠️ Port {p} busy, trying next port...")
+    print("❌ Could not bind MJPEG stream server to any port")
+
+
+# Overlay / Firebase defaults if GET /api/rules and rules.json both fail
+_DEFAULT_THRESHOLDS = {
+    "pitch_down_max_deg": 5.0,
+    "pitch_up_max_deg": 5.0,
+    "roll_max_deg": 15.0,
+    "yaw_max_deg": 20.0,
+    "distance_min_cm": 40.0,
+}
+
+CAMERA_FLAGS = ("too_close", "head_too_low", "head_too_high", "head_tilted", "head_turned")
+_CALIBRATION_PATH = Path(__file__).resolve().parent / "data" / "calibration.json"
+_BLINK_RATE_WINDOW_SEC = 60.0
+
+
+def _parse_thresholds(rules):
+    hp = rules.get("head_pose") or {}
+    dist = rules.get("distance_cm") or {}
+    return {
+        "pitch_down_max_deg": float(hp.get("pitch_down_max_deg", hp.get("pitch_forward_max_deg", 5))),
+        "pitch_up_max_deg": float(hp.get("pitch_up_max_deg", 5)),
+        "roll_max_deg": float(hp.get("roll_max_deg", 15)),
+        "yaw_max_deg": float(hp.get("yaw_max_deg", 20)),
+        "distance_min_cm": float(dist.get("target_min", 40)),
+    }
+
+
+def _load_posture_thresholds():
+    """Load head-pose + distance thresholds: API → rules.json → hardcoded defaults."""
+    api_base = os.environ.get("POSTURECARE_API_URL", "http://127.0.0.1:8080").rstrip("/")
+    try:
+        with urllib.request.urlopen(f"{api_base}/api/rules", timeout=2.0) as resp:
+            rules = json.loads(resp.read().decode("utf-8"))
+            if isinstance(rules, dict) and rules:
+                print(f"📋 [RULES] Loaded thresholds from {api_base}/api/rules")
+                return _parse_thresholds(rules)
+    except Exception as err:
+        print(f"⚠️ [RULES] API load failed ({api_base}/api/rules): {err}")
+
+    try:
+        rules_path = Path(__file__).resolve().parent.parent / "dashboard" / "gPBL" / "backend" / "data" / "rules.json"
+        rules = json.loads(rules_path.read_text(encoding="utf-8"))
+        if isinstance(rules, dict) and rules:
+            print(f"📋 [RULES] Loaded thresholds from {rules_path}")
+            return _parse_thresholds(rules)
+    except Exception as err:
+        print(f"⚠️ [RULES] File load failed: {err}")
+
+    print("📋 [RULES] Using hardcoded defaults")
+    return dict(_DEFAULT_THRESHOLDS)
 
 
 class FirebaseSyncWorker:
     """Non-blocking background worker to sync AI tracking metrics & warnings to Firebase RTDB."""
-    def __init__(self, database_url="https://gpbl-iot-llms-default-rtdb.asia-southeast1.firebasedatabase.app", on_calibrate=None, on_calibrate_pose=None, on_calibrate_dist=None):
+    def __init__(self, database_url="https://gpbl-iot-llms-default-rtdb.asia-southeast1.firebasedatabase.app", on_calibrate=None, on_calibrate_pose=None, on_calibrate_dist=None, thresholds=None):
         self.url = database_url.rstrip("/") + "/ai_data.json"
         self.latest_data = None
         self.lock = threading.Lock()
@@ -21,38 +135,80 @@ class FirebaseSyncWorker:
         self.on_calibrate = on_calibrate
         self.on_calibrate_pose = on_calibrate_pose
         self.on_calibrate_dist = on_calibrate_dist
+        self.thresholds = thresholds or dict(_DEFAULT_THRESHOLDS)
         self.last_pose_req = None
         self.last_dist_req = None
         self.calib_check_counter = 0
         self.thread = threading.Thread(target=self._worker_loop, daemon=True)
         self.thread.start()
 
-    def update_state(self, pitch, roll, yaw, dist_cm, ear, blinks, warnings=None, posture_status="GOOD", nose_x=0.5, nose_y=0.55, blink_rate_bpm=0.0):
+    def update_state(
+        self,
+        pitch,
+        roll,
+        yaw,
+        dist_cm,
+        ear,
+        blinks,
+        warnings=None,
+        posture_status="GOOD",
+        nose_x=None,
+        nose_y=None,
+        blink_rate_bpm=None,
+        face_present=True,
+        face_lost_sec=0.0,
+        flag_durations=None,
+        user_calibrated=False,
+    ):
+        def _num(value, ndigits):
+            if value is None:
+                return None
+            try:
+                return round(float(value), ndigits)
+            except (TypeError, ValueError):
+                return None
+
+        face_present = bool(face_present)
+        if not face_present:
+            pitch = roll = yaw = dist_cm = ear = blink_rate_bpm = None
+            if posture_status in ("GOOD", "WARNING", "DANGER"):
+                posture_status = "NO_FACE"
+            nose_x = None
+            nose_y = None
+
         data = {
-            "pitch": round(float(pitch), 2) if pitch is not None else 0.0,
-            "roll": round(float(roll), 2) if roll is not None else 0.0,
-            "yaw": round(float(yaw), 2) if yaw is not None else 0.0,
-            "camera_distance_cm": round(float(dist_cm), 1) if dist_cm is not None else 0.0,
-            "ai_distance_cm": round(float(dist_cm), 1) if dist_cm is not None else 0.0,
-            "ear": round(float(ear), 3) if ear is not None else 0.0,
-            "blinks": int(blinks),
-            "blink_rate": round(float(blink_rate_bpm), 1),
-            "blink_rate_bpm": round(float(blink_rate_bpm), 1),
-            "head_pitch": round(float(pitch), 2) if pitch is not None else 0.0,
-            "head_roll": round(float(roll), 2) if roll is not None else 0.0,
-            "head_yaw": round(float(yaw), 2) if yaw is not None else 0.0,
+            "face_present": face_present,
+            "face_lost_sec": round(float(face_lost_sec or 0.0), 1),
+            "flag_durations": {
+                str(k): round(float(v), 2)
+                for k, v in (flag_durations or {}).items()
+                if isinstance(v, (int, float))
+            },
+            "pitch": _num(pitch, 2),
+            "roll": _num(roll, 2),
+            "yaw": _num(yaw, 2),
+            "camera_distance_cm": _num(dist_cm, 1),
+            "ai_distance_cm": _num(dist_cm, 1),
+            "ear": _num(ear, 3),
+            "blinks": int(blinks) if blinks is not None else 0,
+            "blink_rate": _num(blink_rate_bpm, 1),
+            "blink_rate_bpm": _num(blink_rate_bpm, 1),
+            "head_pitch": _num(pitch, 2),
+            "head_roll": _num(roll, 2),
+            "head_yaw": _num(yaw, 2),
             "warnings": warnings if warnings else [],
             "posture_status": posture_status,
             "head_pose_thresholds": {
-                "pitch_down_max_deg": 5.0,
-                "pitch_up_max_deg": 5.0,
-                "roll_max_deg": 10.0,
-                "yaw_max_deg": 20.0,
-                "distance_min_cm": 40.0
+                "pitch_down_max_deg": self.thresholds["pitch_down_max_deg"],
+                "pitch_up_max_deg": self.thresholds["pitch_up_max_deg"],
+                "roll_max_deg": self.thresholds["roll_max_deg"],
+                "yaw_max_deg": self.thresholds["yaw_max_deg"],
+                "distance_min_cm": self.thresholds["distance_min_cm"],
             },
-            "nose_x": round(float(nose_x), 3) if nose_x is not None else 0.5,
-            "nose_y": round(float(nose_y), 3) if nose_y is not None else 0.55,
-            "timestamp": time.time()
+            "nose_x": _num(nose_x, 3),
+            "nose_y": _num(nose_y, 3),
+            "user_calibrated": bool(user_calibrated),
+            "timestamp": time.time(),
         }
         with self.lock:
             self.latest_data = data
@@ -60,6 +216,7 @@ class FirebaseSyncWorker:
     def _worker_loop(self):
         last_sent = None
         sensor_url = self.url.replace("ai_data.json", "sensor_data.json")
+        ctx = ssl._create_unverified_context()
         while self.running:
             data_to_send = None
             with self.lock:
@@ -76,7 +233,7 @@ class FirebaseSyncWorker:
                         method='PATCH',
                         headers={'Content-Type': 'application/json; charset=utf-8'}
                     )
-                    with urllib.request.urlopen(req1, timeout=1.0) as res:
+                    with urllib.request.urlopen(req1, timeout=1.5, context=ctx) as res:
                         pass
                     # Update /sensor_data.json so poller & dashboard pick up AI metrics
                     req2 = urllib.request.Request(
@@ -85,11 +242,11 @@ class FirebaseSyncWorker:
                         method='PATCH',
                         headers={'Content-Type': 'application/json; charset=utf-8'}
                     )
-                    with urllib.request.urlopen(req2, timeout=1.0) as res:
+                    with urllib.request.urlopen(req2, timeout=1.5, context=ctx) as res:
                         pass
                     last_sent = data_to_send
-                except Exception:
-                    pass
+                except Exception as sync_err:
+                    print(f"⚠️ [FIREBASE SYNC ERROR] {sync_err}")
 
             # Periodically check for calibration requests from web UI (~every 0.45s)
             self.calib_check_counter += 1
@@ -98,7 +255,7 @@ class FirebaseSyncWorker:
                 if self.on_calibrate_pose or self.on_calibrate:
                     try:
                         calib_url = self.url.replace(".json", "/calibrate_pose_req.json")
-                        with urllib.request.urlopen(calib_url, timeout=0.8) as resp:
+                        with urllib.request.urlopen(calib_url, timeout=0.8, context=ctx) as resp:
                             calib_val = json.loads(resp.read().decode('utf-8'))
                             if calib_val is not None and calib_val != self.last_pose_req:
                                 self.last_pose_req = calib_val
@@ -171,12 +328,16 @@ class BlinkCounterandEARPlot:
         self.last_raw_roll = None
         self.roll_reference = None
         self.filtered_roll = None
+        self.user_calibrated = False
+        self.thresholds = _load_posture_thresholds()
 
         # Real-time Firebase Sync Worker
         self.firebase_sync = FirebaseSyncWorker(
             on_calibrate_pose=self.calibrate_head_pose,
-            on_calibrate_dist=self.calibrate_distance
+            on_calibrate_dist=self.calibrate_distance,
+            thresholds=self.thresholds,
         )
+        start_mjpeg_server(port=8089)
 
         # 3D Head Model Points for Head Pose Estimation (solvePnP)
         self.model_points_3d = np.array([
@@ -192,7 +353,8 @@ class BlinkCounterandEARPlot:
         # Distance Estimation & Calibration parameters
         self.K_factor = 4200.0
         self.current_eye_pixel_dist = 0.0
-        
+        self._load_calibration()
+
         # Initialize video saving parameters
         self._init_video_saving(save_video, output_filename)
         
@@ -202,10 +364,82 @@ class BlinkCounterandEARPlot:
         # Initialize plotting
         self._init_plot()
 
+    def _load_calibration(self):
+        """Restore K_factor and pose zero from tracking_AI/data/calibration.json if present."""
+        path = _CALIBRATION_PATH
+        if not path.is_file():
+            return
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                print(f"⚠️ [CALIB] Ignored invalid calibration file: {path}")
+                return
+
+            k_factor = self.K_factor
+            if data.get("K_factor") is not None:
+                k_factor = float(data["K_factor"])
+
+            pose_reference = self.pose_reference
+            pose_ref = data.get("pose_reference")
+            if pose_ref is not None and len(pose_ref) == 3:
+                pose_reference = tuple(float(x) for x in pose_ref)
+
+            pose_reference_rotation = self.pose_reference_rotation
+            rot = data.get("pose_reference_rotation")
+            if rot is not None:
+                arr = np.array(rot, dtype=np.float64)
+                if arr.shape == (3, 3):
+                    pose_reference_rotation = arr
+
+            roll_reference = self.roll_reference
+            if data.get("roll_reference") is not None:
+                roll_reference = float(data["roll_reference"])
+
+            # Loaded user flag only; auto-zero on first frame never writes this file.
+            user_calibrated = bool(data.get("user_calibrated", False))
+
+            self.K_factor = k_factor
+            self.pose_reference = pose_reference
+            self.pose_reference_rotation = pose_reference_rotation
+            self.roll_reference = roll_reference
+            self.user_calibrated = user_calibrated
+            print(
+                f"📋 [CALIB] Loaded from {path} "
+                f"(K={self.K_factor:.2f}, user_calibrated={self.user_calibrated})"
+            )
+        except Exception as err:
+            print(f"⚠️ [CALIB] Failed to load {path}: {err}")
+
+    def _save_calibration(self):
+        """Persist user calibration (🎯 pose and/or distance) to calibration.json."""
+        path = _CALIBRATION_PATH
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            rot = self.pose_reference_rotation
+            payload = {
+                "K_factor": float(self.K_factor),
+                "pose_reference": (
+                    [float(x) for x in self.pose_reference]
+                    if self.pose_reference is not None
+                    else None
+                ),
+                "pose_reference_rotation": rot.tolist() if rot is not None else None,
+                "roll_reference": (
+                    float(self.roll_reference) if self.roll_reference is not None else None
+                ),
+                "user_calibrated": bool(self.user_calibrated),
+            }
+            path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            print(f"💾 [CALIB] Saved to {path}")
+        except Exception as err:
+            print(f"⚠️ [CALIB] Failed to save {path}: {err}")
+
     def calibrate_distance(self, known_distance_cm=50.0):
         """Fine-tune the distance multiplier K when user sits at a known distance (e.g. 50cm)."""
         if self.current_eye_pixel_dist > 0:
             self.K_factor = known_distance_cm * self.current_eye_pixel_dist
+            self.user_calibrated = True
+            self._save_calibration()
             print(f"[CALIBRATE SUCCESS] New K_factor: {self.K_factor:.2f} at {known_distance_cm} cm")
 
     def calibrate_head_pose(self):
@@ -215,6 +449,8 @@ class BlinkCounterandEARPlot:
             self.pose_reference_rotation = self.last_raw_rotation.copy()
             self.roll_reference = self.last_raw_roll
             self.filtered_roll = 0.0
+            self.user_calibrated = True
+            self._save_calibration()
             print(
                 "[POSE CALIBRATE SUCCESS] Reference set to "
                 f"Pitch={self.pose_reference[0]:.1f}, "
@@ -223,16 +459,29 @@ class BlinkCounterandEARPlot:
             )
 
     def estimate_distance(self, landmarks):
-        """Estimate distance from eyes to camera (in cm) using Interpupillary Distance."""
+        """Estimate distance from eyes to camera (in cm) using Interpupillary Distance in pixels."""
+        if not landmarks or 33 not in landmarks or 263 not in landmarks:
+            return None
         left_eye = np.array(landmarks[33])
         right_eye = np.array(landmarks[263])
         self.current_eye_pixel_dist = np.linalg.norm(left_eye - right_eye)
         if self.current_eye_pixel_dist > 0:
-            return self.K_factor / self.current_eye_pixel_dist
+            raw_dist = float(self.K_factor / self.current_eye_pixel_dist)
+            if not hasattr(self, 'filtered_dist_cm') or self.filtered_dist_cm is None:
+                self.filtered_dist_cm = raw_dist
+            else:
+                self.filtered_dist_cm = 0.75 * self.filtered_dist_cm + 0.25 * raw_dist
+            return round(self.filtered_dist_cm, 1)
         return None
 
     def estimate_head_pose(self, landmarks, frame_w, frame_h):
-        """Calculate Pitch, Yaw, Roll angles of the head using solvePnP."""
+        """Calculate Pitch, Yaw, Roll angles of the head using solvePnP safely."""
+        if not landmarks or not isinstance(landmarks, dict):
+            return None, None, None
+        for idx in self.head_pose_landmarks:
+            if idx not in landmarks:
+                return None, None, None
+
         image_points_2d = np.array([
             landmarks[idx] for idx in self.head_pose_landmarks
         ], dtype=np.float64)
@@ -262,6 +511,7 @@ class BlinkCounterandEARPlot:
             ])
             rmat_new = rmat_old @ old_axes_from_new_axes
             self.last_raw_rotation = rmat_new.copy()
+            # Auto-zero on first frame only — does not mark user_calibrated.
             if self.pose_reference_rotation is None:
                 self.pose_reference_rotation = rmat_new.copy()
 
@@ -279,7 +529,7 @@ class BlinkCounterandEARPlot:
             raw_roll = np.degrees(np.arctan2(eye_vector[1], eye_vector[0]))
             self.last_raw_roll = raw_roll
             if self.roll_reference is None:
-                self.roll_reference = raw_roll
+                self.roll_reference = raw_roll  # first-frame auto-zero, not user calib
             roll = raw_roll - self.roll_reference
             roll = (roll + 180.0) % 360.0 - 180.0
             if self.filtered_roll is None:
@@ -290,14 +540,14 @@ class BlinkCounterandEARPlot:
             self.last_raw_pose = (pitch, yaw, roll)
 
             if self.pose_reference is None:
-                self.pose_reference = self.last_raw_pose
+                self.pose_reference = self.last_raw_pose  # first-frame snapshot, not user calib
             return pitch, yaw, roll
         return None, None, None
 
     def draw_head_axes(self, frame, landmarks, pitch=None, yaw=None, roll=None, length=50):
         """Draw X/Y/Z head axes with the actual nose tip (landmark 1) as the origin,
         dynamically rotating according to the calibrated Pitch, Yaw, Roll angles."""
-        if pitch is None or yaw is None or roll is None:
+        if pitch is None or yaw is None or roll is None or not landmarks or 1 not in landmarks:
             return
 
         # Origin is always attached to the nose tip (Landmark index 1)
@@ -370,6 +620,8 @@ class BlinkCounterandEARPlot:
     def _init_tracking_variables(self):
         """Initialize variables used for tracking blinks and frame processing."""
         self.blink_counter = 0
+        self.blink_times = deque()
+        self.start_time = None
         self.frame_counter = 0
         self.frame_number = 0
         self.ear_values = []
@@ -379,6 +631,78 @@ class BlinkCounterandEARPlot:
         # Add default y-axis limits
         self.default_ymin = 0.18  # Typical minimum EAR value
         self.default_ymax = 0.44  # Typical maximum EAR value
+        self.face_present = False
+        self.face_lost_since = None
+        self.last_landmarks = None
+        self.flag_durations = {flag: 0.0 for flag in CAMERA_FLAGS}
+        self._flag_tick_at = time.monotonic()
+
+    def _face_lost_sec(self) -> float:
+        if self.face_lost_since is None:
+            return 0.0
+        return max(0.0, time.monotonic() - self.face_lost_since)
+
+    def _set_face_present(self, present: bool) -> float:
+        now = time.monotonic()
+        if present:
+            self.face_present = True
+            self.face_lost_since = None
+            return 0.0
+        self.face_present = False
+        if self.face_lost_since is None:
+            self.face_lost_since = now
+        return now - self.face_lost_since
+
+    def _tick_flag_durations(self, active_flags: set) -> dict:
+        now = time.monotonic()
+        last = getattr(self, "_flag_tick_at", None)
+        dt = 0.0 if last is None else max(0.0, now - last)
+        self._flag_tick_at = now
+        if not hasattr(self, "flag_durations"):
+            self.flag_durations = {flag: 0.0 for flag in CAMERA_FLAGS}
+        for flag in CAMERA_FLAGS:
+            if flag in active_flags:
+                self.flag_durations[flag] = self.flag_durations.get(flag, 0.0) + dt
+            else:
+                self.flag_durations[flag] = 0.0
+        return dict(self.flag_durations)
+
+    def _sliding_blink_bpm(self):
+        """Blink rate over a sliding 60s window (warmup: n / elapsed * 60)."""
+        now = time.time()
+        if self.start_time is None:
+            self.start_time = now
+        if not hasattr(self, "blink_times"):
+            self.blink_times = deque()
+        cutoff = now - _BLINK_RATE_WINDOW_SEC
+        while self.blink_times and self.blink_times[0] < cutoff:
+            self.blink_times.popleft()
+        n = len(self.blink_times)
+        elapsed = now - self.start_time
+        window = min(elapsed, _BLINK_RATE_WINDOW_SEC)
+        if window <= 0:
+            return 0.0
+        return round(n / window * 60.0, 1)
+
+    def _publish_no_face(self, extra_warnings=None):
+        lost_sec = self._set_face_present(False)
+        self._tick_flag_durations(set())
+        if hasattr(self, "firebase_sync"):
+            self.firebase_sync.update_state(
+                pitch=None,
+                roll=None,
+                yaw=None,
+                dist_cm=None,
+                ear=None,
+                blinks=self.blink_counter,
+                warnings=extra_warnings or [],
+                posture_status="NO_FACE",
+                blink_rate_bpm=None,
+                face_present=False,
+                face_lost_sec=lost_sec,
+                flag_durations=self.flag_durations,
+                user_calibrated=getattr(self, "user_calibrated", False),
+            )
 
     def _init_plot(self):
         """Initialize the matplotlib plot for EAR visualization."""
@@ -459,15 +783,23 @@ class BlinkCounterandEARPlot:
 
     def eye_aspect_ratio(self, eye_landmarks, landmarks):
         """
-        Calculate the eye aspect ratio (EAR) for given eye landmarks.
+        Calculate the eye aspect ratio (EAR) for given eye landmarks safely.
         """
-        A = np.linalg.norm(np.array(landmarks[eye_landmarks[1]]) - 
-                          np.array(landmarks[eye_landmarks[5]]))
-        B = np.linalg.norm(np.array(landmarks[eye_landmarks[2]]) - 
-                          np.array(landmarks[eye_landmarks[4]]))
-        C = np.linalg.norm(np.array(landmarks[eye_landmarks[0]]) - 
-                          np.array(landmarks[eye_landmarks[3]]))
-        return (A + B) / (2.0 * C)
+        if not landmarks or not isinstance(landmarks, dict):
+            return 0.3
+        for idx in eye_landmarks:
+            if idx not in landmarks:
+                return 0.3
+        try:
+            A = np.linalg.norm(np.array(landmarks[eye_landmarks[1]]) - 
+                              np.array(landmarks[eye_landmarks[5]]))
+            B = np.linalg.norm(np.array(landmarks[eye_landmarks[2]]) - 
+                              np.array(landmarks[eye_landmarks[4]]))
+            C = np.linalg.norm(np.array(landmarks[eye_landmarks[0]]) - 
+                              np.array(landmarks[eye_landmarks[3]]))
+            return (A + B) / (2.0 * C) if C > 0 else 0.3
+        except Exception:
+            return 0.3
 
     def _update_plot(self, ear):
         """Update the plot with new EAR values."""
@@ -518,35 +850,70 @@ class BlinkCounterandEARPlot:
         Process a single frame to detect eyes, head pose, and distance.
         """
         fh, fw, _ = frame.shape
+        
+        # Auto-gamma low-light boost if camera feed is dark
+        try:
+            mean_lum = float(np.mean(frame))
+            if mean_lum < 60.0:
+                gamma = 1.7 if mean_lum < 30.0 else 1.4
+                inv_gamma = 1.0 / gamma
+                table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+                frame = cv.LUT(frame, table)
+        except Exception:
+            pass
+
         frame, face_landmarks = self.generator.create_face_mesh(frame, draw=False)
         
-        if not face_landmarks:
+        if face_landmarks and 33 in face_landmarks and 263 in face_landmarks:
+            self.last_landmarks = face_landmarks
+            right_ear = self.eye_aspect_ratio(self.RIGHT_EYE_EAR, face_landmarks)
+            left_ear = self.eye_aspect_ratio(self.LEFT_EYE_EAR, face_landmarks)
+            ear = (right_ear + left_ear) / 2.0
+            dist_cm = self.estimate_distance(face_landmarks)
+            pitch, yaw, roll = self.estimate_head_pose(face_landmarks, fw, fh)
+            color = self.COLORS['BLUE']['bgr'] if ear < self.EAR_THRESHOLD else self.COLORS['GREEN']['bgr']
+            self._draw_frame_elements(frame, face_landmarks, color, dist_cm, pitch, yaw, roll, ear)
+            return frame, ear
+        else:
+            lost_sec = self._set_face_present(False)
+            last_pose = getattr(self, "last_raw_pose", None)
+            last_lm = getattr(self, "last_landmarks", None)
+            if last_pose and last_lm:
+                self.draw_head_axes(frame, last_lm, last_pose[0], last_pose[1], last_pose[2])
+            DrawingUtils.draw_text_with_bg(
+                frame, f"Blinks: {self.blink_counter}", (10, 30),
+                font_scale=0.7, thickness=2,
+                bg_color=self.COLORS['RED']['bgr'] or (0, 0, 255),
+                text_color=(0, 0, 0)
+            )
+            cv.putText(
+                frame,
+                f"FACE LOST ({lost_sec:.0f}s)",
+                (10, 65),
+                cv.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (0, 0, 255),
+                2,
+                cv.LINE_AA,
+            )
+            self._publish_no_face()
+            global _latest_jpeg_bytes
+            try:
+                ret_jpg, jpeg_buf = cv.imencode('.jpg', frame, [cv.IMWRITE_JPEG_QUALITY, 92])
+                if ret_jpg:
+                    with _latest_frame_lock:
+                        _latest_jpeg_bytes = jpeg_buf.tobytes()
+            except Exception:
+                pass
             return frame, None
-            
-        # 1. Calculate EAR
-        right_ear = self.eye_aspect_ratio(self.RIGHT_EYE_EAR, face_landmarks)
-        left_ear = self.eye_aspect_ratio(self.LEFT_EYE_EAR, face_landmarks)
-        ear = (right_ear + left_ear) / 2.0
-        
-        # 2. Estimate Distance
-        dist_cm = self.estimate_distance(face_landmarks)
-
-        # 3. Estimate Head Pose
-        pitch, yaw, roll = self.estimate_head_pose(face_landmarks, fw, fh)
-
-        # Determine visualization color
-        color = self.COLORS['BLUE']['bgr'] if ear < self.EAR_THRESHOLD else self.COLORS['GREEN']['bgr']
-        
-        # Draw landmarks and info
-        self._draw_frame_elements(frame, face_landmarks, color, dist_cm, pitch, yaw, roll, ear)
-        
-        return frame, ear
 
     def _draw_frame_elements(self, frame, landmarks, color, dist_cm=None, pitch=None, yaw=None, roll=None, ear=None):
         """Draw eye landmarks, blink counter, distance, pose & warnings on frame."""
-        for eye in [self.RIGHT_EYE, self.LEFT_EYE]:
-            for loc in eye:
-                cv.circle(frame, (landmarks[loc]), 2, color, cv.FILLED)
+        if landmarks and isinstance(landmarks, dict):
+            for eye in [self.RIGHT_EYE, self.LEFT_EYE]:
+                for loc in eye:
+                    if loc in landmarks:
+                        cv.circle(frame, landmarks[loc], 2, color, cv.FILLED)
 
         self.draw_head_axes(frame, landmarks, pitch, yaw, roll)
         
@@ -557,7 +924,7 @@ class BlinkCounterandEARPlot:
         )
 
         if dist_cm is not None:
-            dist_bg = (0, 0, 255) if dist_cm < 40 else (30, 46, 209)
+            dist_bg = (0, 0, 255) if dist_cm < self.thresholds["distance_min_cm"] else (30, 46, 209)
             DrawingUtils.draw_text_with_bg(
                 frame, f"Dist: {dist_cm:.1f} cm", (10, 65),
                 font_scale=0.6, thickness=2,
@@ -571,16 +938,17 @@ class BlinkCounterandEARPlot:
             cv.putText(frame, f"Roll: {roll:.1f}deg", (5, 116),
                        cv.FONT_HERSHEY_SIMPLEX, 0.35, pose_color, 1, cv.LINE_AA)
 
-        # Threshold constants for ergonomic alerts
-        PITCH_DOWN_MAX = 5.0
-        PITCH_UP_MAX = 5.0
-        ROLL_MAX = 10.0
-        YAW_MAX = 20.0
-        DIST_MIN = 40.0
+        # Thresholds from GET /api/rules → rules.json → hardcoded defaults
+        PITCH_DOWN_MAX = self.thresholds["pitch_down_max_deg"]
+        PITCH_UP_MAX = self.thresholds["pitch_up_max_deg"]
+        ROLL_MAX = self.thresholds["roll_max_deg"]
+        YAW_MAX = self.thresholds["yaw_max_deg"]
+        DIST_MIN = self.thresholds["distance_min_cm"]
 
         # Warnings collection and visualization
         active_warnings = []
         is_danger = False
+        active_flags = set()
 
         warning_y = 140
         if pitch is not None and pitch > PITCH_DOWN_MAX:
@@ -589,6 +957,7 @@ class BlinkCounterandEARPlot:
             warning_y += 25
             active_warnings.append(f"Head tilted down too much ({pitch:.1f}° > {PITCH_DOWN_MAX:.0f}°)")
             is_danger = True
+            active_flags.add("head_too_low")
 
         if pitch is not None and pitch < -PITCH_UP_MAX:
             cv.putText(frame, "WARNING: HEAD TOO HIGH!", (10, warning_y),
@@ -596,6 +965,7 @@ class BlinkCounterandEARPlot:
             warning_y += 25
             active_warnings.append(f"Head tilted back too much ({pitch:.1f}° < -{PITCH_UP_MAX:.0f}°)")
             is_danger = True
+            active_flags.add("head_too_high")
 
         if roll is not None and abs(roll) > ROLL_MAX:
             cv.putText(frame, "WARNING: HEAD TILTED!", (10, warning_y),
@@ -603,32 +973,34 @@ class BlinkCounterandEARPlot:
             warning_y += 25
             active_warnings.append(f"Head tilted off axis ({roll:.1f}° > {ROLL_MAX:.0f}°)")
             is_danger = True
+            active_flags.add("head_tilted")
 
         if yaw is not None and abs(yaw) > YAW_MAX:
             cv.putText(frame, "WARNING: HEAD TURNED!", (10, warning_y),
                        cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 200, 255), 2, cv.LINE_AA)
             warning_y += 25
             active_warnings.append(f"Head turned away ({yaw:.1f}° > {YAW_MAX:.0f}°)")
-            is_danger = True
+            active_flags.add("head_turned")
 
         if dist_cm is not None and dist_cm < DIST_MIN:
             cv.putText(frame, "WARNING: TOO CLOSE!", (10, warning_y),
                        cv.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2, cv.LINE_AA)
             active_warnings.append(f"Sitting too close to screen ({dist_cm:.1f} cm < {DIST_MIN:.0f} cm)")
             is_danger = True
+            active_flags.add("too_close")
+
+        self._set_face_present(True)
+        flag_durations = self._tick_flag_durations(active_flags)
 
         posture_status = "DANGER" if is_danger else ("WARNING" if (abs(pitch or 0) > 3.5 or abs(roll or 0) > 7.0 or abs(yaw or 0) > 15.0) else "GOOD")
 
         # Extract normalized nose tip (landmark index 1)
         fh, fw = frame.shape[:2]
-        nose_pt = landmarks[1] if (landmarks is not None and len(landmarks) > 1) else (fw // 2, fh // 2)
+        nose_pt = landmarks[1] if (landmarks is not None and 1 in landmarks) else (fw // 2, fh // 2)
         norm_nose_x = nose_pt[0] / fw if fw > 0 else 0.5
         norm_nose_y = nose_pt[1] / fh if fh > 0 else 0.55
 
-        if not hasattr(self, 'start_time') or self.start_time is None:
-            self.start_time = time.time()
-        elapsed_min = max((time.time() - self.start_time) / 60.0, 0.05)
-        calc_bpm = round(self.blink_counter / elapsed_min, 1)
+        calc_bpm = self._sliding_blink_bpm()
 
         # Sync to Firebase RTDB in background thread
         if hasattr(self, 'firebase_sync'):
@@ -637,61 +1009,43 @@ class BlinkCounterandEARPlot:
                 roll=roll,
                 yaw=yaw,
                 dist_cm=dist_cm,
-                ear=ear if ear is not None else 0.3,
+                ear=ear,
                 blinks=self.blink_counter,
                 warnings=active_warnings,
                 posture_status=posture_status,
                 nose_x=norm_nose_x,
                 nose_y=norm_nose_y,
-                blink_rate_bpm=calc_bpm
+                blink_rate_bpm=calc_bpm,
+                face_present=True,
+                face_lost_sec=0.0,
+                flag_durations=flag_durations,
+                user_calibrated=self.user_calibrated,
             )
+
+        # Encode processed frame with 3D pose & landmarks overlay for local web streaming (High Resolution Crisp Quality: 92)
+        global _latest_jpeg_bytes
+        try:
+            ret_jpg, jpeg_buf = cv.imencode('.jpg', frame, [cv.IMWRITE_JPEG_QUALITY, 92])
+            if ret_jpg:
+                with _latest_frame_lock:
+                    _latest_jpeg_bytes = jpeg_buf.tobytes()
+        except Exception:
+            pass
 
     def process_video(self):
         """Process the video / webcam / ESP32-CAM stream."""
         try:
             # Open video capture (supports 0 for webcam, file paths, or ESP32-CAM HTTP URLs)
             if isinstance(self.video_path, str) and self.video_path.startswith("http"):
-                clean_url = self.video_path.rstrip("/")
-                if ":81/stream" in clean_url or "/stream" in clean_url or "/mjpeg" in clean_url:
-                    urls_to_try = [self.video_path]
-                else:
-                    urls_to_try = [
-                        f"{clean_url}:81/stream",
-                        f"{clean_url}/stream",
-                        f"{clean_url}/mjpeg",
-                        self.video_path
-                    ]
-                
-                cap = None
-                for url in urls_to_try:
-                    print(f"[ESP32-CAM] Connecting to: {url} ...")
-                    temp_cap = ThreadedVideoStream(url)
-                    if temp_cap.isOpened():
-                        ret, _ = temp_cap.read()
-                        if ret:
-                            print(f"[ESP32-CAM SUCCESS] Connected to {url}")
-                            temp_cap.start()
-                            cap = temp_cap
-                            break
-                        temp_cap.release()
-                
-                if cap is None or not cap.isOpened():
-                    print(f"\n⚠️  [CAMERA FALLBACK] Cannot connect to ESP32-CAM stream at {self.video_path}.")
-                    print("👉 Automatically switching to local computer Webcam (device index 0)...\n")
-                    self.video_path = 0
-                    cap = ThreadedVideoStream(0)
-                    if not cap.isOpened():
-                        raise IOError("Failed to open both ESP32-CAM stream and local computer Webcam (0)")
-                    cap.set(cv.CAP_PROP_FRAME_WIDTH, 640)
-                    cap.set(cv.CAP_PROP_FRAME_HEIGHT, 480)
-                    cap.start()
+                print(f"📡 [ESP32-CAM STREAM ENGINE] Starting HTTP stream decoder for: {self.video_path}")
+                cap = ThreadedVideoStream(self.video_path)
+                cap.start()
             elif isinstance(self.video_path, int):
                 # Webcam: use ThreadedVideoStream to avoid latency
                 cap = ThreadedVideoStream(self.video_path)
-                if not cap.isOpened():
-                    raise IOError(f"Failed to open video source: {self.video_path}")
-                cap.set(cv.CAP_PROP_FRAME_WIDTH, 640)
-                cap.set(cv.CAP_PROP_FRAME_HEIGHT, 480)
+                if cap.stream is not None:
+                    cap.set(cv.CAP_PROP_FRAME_WIDTH, 1280)
+                    cap.set(cv.CAP_PROP_FRAME_HEIGHT, 720)
                 cap.start()
             else:
                 # Video file: use normal cv.VideoCapture to process all frames sequentially
@@ -725,22 +1079,60 @@ class BlinkCounterandEARPlot:
                     pass
 
     def _process_video_frames(self, cap):
-        """Process individual frames from video capture."""
+        """Process individual frames from video capture with auto-reconnect resilience."""
         is_live_stream = isinstance(self.video_path, int) or (
             isinstance(self.video_path, str) and self.video_path.startswith("http")
         )
 
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
+        consecutive_read_failures = 0
+        while getattr(self, 'running', True):
+            ret, frame = False, None
+            if cap is not None and hasattr(cap, 'isOpened') and cap.isOpened():
+                try:
+                    ret, frame = cap.read()
+                except Exception:
+                    ret, frame = False, None
 
-            # Process frame and get EAR
-            frame, ear = self.process_frame(frame)
-            
-            if ear is not None:
-                self._update_blink_detection(ear)
-                self._update_visualization(frame, ear, is_live_stream)
+            if not ret or frame is None:
+                consecutive_read_failures += 1
+                if hasattr(self, 'firebase_sync') and consecutive_read_failures % 10 == 0:
+                    self._publish_no_face(
+                        extra_warnings=[f"Connecting to video stream ({self.video_path})..."]
+                    )
+                time.sleep(0.05)
+
+                # Reconnect attempt every 3 seconds for HTTP / RTSP / live stream
+                if is_live_stream and consecutive_read_failures % 60 == 0:
+                    print(f"🔄 Reconnecting to video stream: {self.video_path}...")
+                    try:
+                        if cap and hasattr(cap, 'release'):
+                            cap.release()
+                        if isinstance(self.video_path, str) and self.video_path.startswith("http"):
+                            cap = ThreadedVideoStream(self.video_path)
+                            cap.start()
+                        elif isinstance(self.video_path, int):
+                            cap = ThreadedVideoStream(self.video_path)
+                            if cap.stream is not None:
+                                cap.set(cv.CAP_PROP_FRAME_WIDTH, 1280)
+                                cap.set(cv.CAP_PROP_FRAME_HEIGHT, 720)
+                            cap.start()
+                        else:
+                            cap = cv.VideoCapture(self.video_path)
+                    except Exception as err:
+                        print(f"⚠️ Reconnect error: {err}")
+                continue
+
+            consecutive_read_failures = 0
+
+            # Process frame safely without stopping the script on unexpected frame errors
+            try:
+                frame, ear = self.process_frame(frame)
+                if ear is not None:
+                    self._update_blink_detection(ear)
+                    self._update_visualization(frame, ear, is_live_stream)
+            except Exception as frame_err:
+                import traceback
+                print(f"⚠️ [FRAME SKIP] Exception: {frame_err}\n{traceback.format_exc()}")
 
             if getattr(self, 'show_gui', True):
                 wait_time = 1 if is_live_stream else 30
@@ -764,12 +1156,18 @@ class BlinkCounterandEARPlot:
         else:
             if self.frame_counter >= self.CONSEC_FRAMES:
                 self.blink_counter += 1
+                if not hasattr(self, "blink_times"):
+                    self.blink_times = deque()
+                self.blink_times.append(time.time())
             self.frame_counter = 0
         
         self.frame_number += 1
 
     def _update_visualization(self, frame, ear, is_live_stream=False):
         """Update the visualization including the plot and video output."""
+        if not getattr(self, 'show_gui', True) and not getattr(self, 'save_video', False):
+            return
+
         # Refresh plot image (every 2 frames on live stream for max CPU speed)
         if not is_live_stream or self.frame_number % 2 == 0 or self.cached_plot_img is None:
             self._update_plot(ear)
@@ -824,7 +1222,7 @@ class BlinkCounterandEARPlot:
 
 if __name__ == "__main__":
     import sys
-    input_video_path = "http://172.20.10.3:81/stream"
+    input_video_path = 0
     show_gui = True
 
     for a in sys.argv[1:]:

@@ -26,6 +26,7 @@
     </nav>
     <div class="header-right">
       <span class="cloud-status-badge"><span class="cloud-dot"></span> Firebase Realtime</span>
+      <span class="led-badge" id="ledIndicatorBadge" title="ESP32 Physical Warning LEDs"><span class="led-dot green" id="ledDotGreen"></span> <span id="ledStatusText">Green LED ON</span></span>
       <span class="risk-pill" id="headerRiskPill">NORMAL</span>
       <span id="lastUpdate">Loading...</span>
       <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Open settings">⚙</button>
@@ -191,7 +192,7 @@
               <div class="camera-status-pill" id="cameraStatus">OFFLINE / STANDBY</div>
             </div>
             <div class="camera-feed-container" id="cameraFeedContainer">
-              <img id="cameraStreamImg" src="http://172.20.10.3:81/stream" alt="ESP32-S3 Camera Stream" />
+              <img id="cameraStreamImg" src="/api/video_feed" alt="ESP32-S3 Camera Stream" />
               <video id="browserWebcamVideo" autoplay playsinline muted style="display:none;"></video>
               <!-- 3D Head Orientation Axis Follow Canvas Overlay -->
               <canvas id="cameraPoseCanvas" class="camera-pose-canvas"></canvas>
@@ -215,8 +216,14 @@
               </div>
               <div id="aiSourceBadge" style="background: rgba(255,255,255,0.1); padding: 3px 10px; border-radius: 12px; font-size: 12px; color: #94a3b8; font-weight: 600;">Source: None</div>
             </div>
+            <style>
+              .camera-controls { gap: 6px; font-size: 12px; margin-top: 10px; flex-wrap: wrap; }
+              .camera-controls input[type="text"] { font-size: 11.5px; padding: 5px 10px; height: 32px; border-radius: 6px; background: rgba(15,23,42,0.8); border: 1px solid rgba(255,255,255,0.15); color: #e2e8f0; flex: 1; min-width: 220px; }
+              .camera-controls .focus-btn { font-size: 11.5px; padding: 5px 11px; height: 32px; border-radius: 6px; font-weight: 600; text-transform: none; letter-spacing: 0; display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+              .cam-action-btn { font-size: 10.5px; padding: 3px 8px; height: 26px; border-radius: 4px; }
+            </style>
             <div class="camera-controls">
-              <input type="text" id="streamUrlInput" placeholder="http://172.20.10.3:81/stream" value="http://172.20.10.3:81/stream" />
+              <input type="text" id="streamUrlInput" placeholder="Nhập IP ESP32 (vd: http://192.168.1.35:80/stream)" value="http://192.168.1.35:80/stream" />
               <button id="connectCamBtn" class="focus-btn primary">Connect ESP32 Cam</button>
               <button id="toggleWebcamBtn" class="focus-btn">Use Browser Webcam</button>
               <button id="camCalibrateBtn" class="focus-btn calib-accent-btn" title="Set current head pose as zero reference (0,0,0)">🎯 Calibrate (0,0,0)</button>

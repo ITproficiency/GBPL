@@ -599,7 +599,7 @@ static esp_err_t stream_handler(httpd_req_t *req)
 #endif
                 if (fb->format != PIXFORMAT_JPEG)
                 {
-                    bool jpeg_converted = frame2jpg(fb, 80, &_jpg_buf, &_jpg_buf_len);
+                    bool jpeg_converted = frame2jpg(fb, 50, &_jpg_buf, &_jpg_buf_len);
                     esp_camera_fb_return(fb);
                     fb = NULL;
                     if (!jpeg_converted)
@@ -647,7 +647,7 @@ static esp_err_t stream_handler(httpd_req_t *req)
 #endif
                         draw_face_boxes(&rfb, &results, face_id);
                     }
-                    s = fmt2jpg(fb->buf, fb->len, fb->width, fb->height, PIXFORMAT_RGB565, 80, &_jpg_buf, &_jpg_buf_len);
+                    s = fmt2jpg(fb->buf, fb->len, fb->width, fb->height, PIXFORMAT_RGB565, 50, &_jpg_buf, &_jpg_buf_len);
                     esp_camera_fb_return(fb);
                     fb = NULL;
                     if (!s) {
@@ -712,7 +712,7 @@ static esp_err_t stream_handler(httpd_req_t *req)
 #endif
                                 draw_face_boxes(&rfb, &results, face_id);
                             }
-                            s = fmt2jpg(out_buf, out_len, out_width, out_height, PIXFORMAT_RGB888, 90, &_jpg_buf, &_jpg_buf_len);
+                            s = fmt2jpg(out_buf, out_len, out_width, out_height, PIXFORMAT_RGB888, 50, &_jpg_buf, &_jpg_buf_len);
                             free(out_buf);
                             if (!s) {
                                 log_e("fmt2jpg failed");

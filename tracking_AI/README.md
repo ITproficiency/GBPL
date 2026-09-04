@@ -11,31 +11,45 @@ Real-time computer vision module for tracking user blinks, Eye Aspect Ratio (EAR
 
 ## 🛠 Prerequisites & Installation
 
+Python **3.10–3.12** (3.11 recommended). MediaPipe does not support Python 3.13.
+
+Prefer the **repo-root** launcher, which creates `tracking_AI/.venv` and does not use a global `pip install`:
+
 ```bash
-pip install -r requirements.txt
+./run.sh          # macOS / Linux (from repo root)
+.\run.ps1         # Windows
 ```
 
-Recommended Python version: **Python 3.10+**.
+To install into that venv only:
 
-Dependencies:
+```bash
+tracking_AI/.venv/bin/python -m pip install -r tracking_AI/requirements.txt   # macOS / Linux
+tracking_AI\.venv\Scripts\python.exe -m pip install -r tracking_AI\requirements.txt  # Windows
+```
+
+Dependencies (see `requirements.txt` for pins):
 - `opencv-python`
 - `mediapipe`
 - `numpy`
 - `matplotlib`
 
+### macOS Camera permission
+
+Grant **Camera** to the parent app (Terminal / iTerm / VS Code / Cursor) under System Settings → Privacy & Security → Camera. If access is denied, tracking stays up with a connecting placeholder and does not exit.
+
 ## 💻 Usage
 
 ### 1. Simple Blink Counter
 ```bash
-python blink_counter.py
+tracking_AI/.venv/bin/python blink_counter.py
 ```
 
 ### 2. Blink Counter with Real-time EAR Plot & Head Pose
 ```bash
-python blink_counter_and_EAR_plot.py
+tracking_AI/.venv/bin/python blink_counter_and_EAR_plot.py
 ```
 
-> **Note**: To configure the video input source (local webcam `0` or ESP32-CAM stream URL like `http://192.168.1.50:81/stream`), edit the `input_video_path` variable at the bottom of the script.
+> **Note**: To configure the video input source (local webcam `0` or ESP32-CAM stream URL like `http://192.168.1.50:81/stream`), edit the `input_video_path` variable at the bottom of the script. Root `./run.sh` / `.\run.ps1` pass the camera argument for you.
 
 ## 📡 Firebase Data Schema
 
