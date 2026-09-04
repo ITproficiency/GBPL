@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import ssl
 import urllib.error
 import urllib.request
 
@@ -17,6 +18,14 @@ import processing
 
 MOCK_MODEL = "mock-advisor-v1"
 logger = logging.getLogger(__name__)
+
+
+def _get_llm_config() -> tuple[str, str, str]:
+    import os
+    api_key = os.environ.get("OPENROUTER_API_KEY", "") or getattr(config, "OPENROUTER_API_KEY", "")
+    model = os.environ.get("OPENROUTER_MODEL", "") or getattr(config, "OPENROUTER_MODEL", "openai/gpt-4o-mini")
+    base_url = os.environ.get("OPENROUTER_BASE_URL", "") or getattr(config, "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    return api_key, model, base_url
 
 
 def analyze_warning(reading: dict) -> dict:
@@ -32,18 +41,19 @@ def analyze_warning(reading: dict) -> dict:
         head_yaw=reading.get("head_yaw_deg"),
     )
 
-    if config.OPENROUTER_API_KEY:
+    api_key, model, base_url = _get_llm_config()
+    if api_key:
         try:
             text = _chat_completion(
-                api_key=config.OPENROUTER_API_KEY,
-                base_url=config.OPENROUTER_BASE_URL,
-                model=config.OPENROUTER_MODEL,
+                api_key=api_key,
+                base_url=base_url,
+                model=model,
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 referer="https://localhost",
                 app_title="PostureCare",
             )
-            return _parse_posturecare_response(text, config.OPENROUTER_MODEL)
+            return _parse_posturecare_response(text, model)
         except Exception as exc:
             logger.warning("OpenRouter failed: %s", exc)
 
@@ -56,18 +66,19 @@ def analyze_summary(system_prompt: str, user_prompt: str) -> dict:
     Kept separate from analyze_warning() because that one is wired to a single
     reading's Context/Advice format; this one narrates over a summary instead.
     """
-    if config.OPENROUTER_API_KEY:
+    api_key, model, base_url = _get_llm_config()
+    if api_key:
         try:
             text = _chat_completion(
-                api_key=config.OPENROUTER_API_KEY,
-                base_url=config.OPENROUTER_BASE_URL,
-                model=config.OPENROUTER_MODEL,
+                api_key=api_key,
+                base_url=base_url,
+                model=model,
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 referer="https://localhost",
                 app_title="PostureCare",
             )
-            return {"summary": text.strip(), "model_name": config.OPENROUTER_MODEL, "raw_text": text}
+            return {"summary": text.strip(), "model_name": model, "raw_text": text}
         except Exception as exc:
             logger.warning("OpenRouter failed: %s", exc)
 
@@ -112,9 +123,10 @@ def _chat_completion(
 
     url = f"{base_url.rstrip('/')}/chat/completions"
     req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+    ctx = ssl._create_unverified_context()
 
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=60, context=ctx) as resp:
             data = json.loads(resp.read().decode())
     except urllib.error.HTTPError as exc:
         body = exc.read().decode() if exc.fp else ""
