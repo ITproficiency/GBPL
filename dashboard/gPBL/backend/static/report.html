@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PostureCare Session Report</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    html, body {
+      height: auto;
+      overflow: auto;
+      background: var(--bg);
+    }
+    body.report-page {
+      display: block;
+      padding: 1.5rem 1.75rem 2.5rem;
+      max-width: 920px;
+      margin: 0 auto;
+    }
+    .report-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+    .report-toolbar h1 {
+      font-size: 1.35rem;
+    }
+    .report-meta {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-top: 0.2rem;
+    }
+    .report-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .risk-pct-row {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-top: 0.5rem;
+    }
+    .risk-pct {
+      flex: 1;
+      min-width: 90px;
+      padding: 0.55rem 0.7rem;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      font-size: 0.8rem;
+    }
+    .risk-pct strong {
+      display: block;
+      font-size: 1.15rem;
+    }
+    .sparkline-wrap {
+      height: 120px;
+      position: relative;
+    }
+    .chart-wrap.report-chart {
+      height: 200px;
+    }
+    .report-status {
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    @media (max-width: 700px) {
+      .report-grid { grid-template-columns: 1fr; }
+    }
+    @media print {
+      body.report-page {
+        background: #fff;
+        color: #111;
+        padding: 0;
+        max-width: none;
+      }
+      :root {
+        --bg: #fff;
+        --surface: #fff;
+        --border: #d4d4d8;
+        --text: #111;
+        --muted: #52525b;
+      }
+      .report-toolbar .focus-btn,
+      .no-print {
+        display: none !important;
+      }
+      .panel, .card {
+        break-inside: avoid;
+        box-shadow: none;
+        border-color: #d4d4d8;
+      }
+    }
+  </style>
+</head>
+<body class="report-page">
+  <div class="report-toolbar">
+    <div>
+      <h1>Session Report</h1>
+      <p class="report-meta" id="reportMeta">Loading…</p>
+    </div>
+    <button type="button" id="printBtn" class="focus-btn primary">Print</button>
+  </div>
+
+  <p class="report-status" id="reportStatus"></p>
+
+  <div class="report-grid">
+    <div class="panel">
+      <h2>Risk mix</h2>
+      <div class="risk-pct-row">
+        <div class="risk-pct"><span>Normal</span><strong id="pctNormal">--</strong></div>
+        <div class="risk-pct"><span>Warning</span><strong id="pctWarning">--</strong></div>
+        <div class="risk-pct"><span>High</span><strong id="pctHigh">--</strong></div>
+      </div>
+      <p class="report-meta" id="reportStatsLine"></p>
+    </div>
+    <div class="panel">
+      <h2>Exposure</h2>
+      <p><strong id="reportExposure">--</strong></p>
+      <p class="report-meta" id="reportCorrected"></p>
+      <svg id="riskSparkline" class="session-timeline" viewBox="0 0 600 16" preserveAspectRatio="none" aria-label="Risk sparkline"></svg>
+      <p class="timeline-caption">Risk over this session</p>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom: 1rem;">
+    <h2>Distance &amp; light</h2>
+    <p class="report-meta" id="reportDistLux"></p>
+  </div>
+
+  <div class="panel" id="reportAdvicePanel">
+    <h2>Advice &amp; insight</h2>
+    <div id="reportAdvice" class="advice-content">
+      <p class="empty">No saved insight for this session yet.</p>
+    </div>
+  </div>
+
+  <script>
+    function qs(name) {
+      return new URLSearchParams(window.location.search).get(name);
+    }
+
+    function formatClock(totalSeconds) {
+      const sec = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+      const m = Math.floor(sec / 60).toString().padStart(2, "0");
+      const s = (sec % 60).toString().padStart(2, "0");
+      return m + ":" + s;
+    }
+
+    function formatTime(iso) {
+      if (!iso) return "";
+      try { return new Date(iso).toLocaleString(); } catch { return String(iso); }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str == null ? "" : String(str);
+      return div.innerHTML;
+    }
+
+    function asMarkdown(text) {
+      if (!text) return "";
+      return "<p>" + escapeHtml(text).replace(/\n+/g, "</p><p>") + "</p>";
+    }
+
+    function sparklineBuckets(payload) {
+      if (!payload) return [];
+      if (Array.isArray(payload)) return payload;
+      return Array.isArray(payload.buckets) ? payload.buckets : [];
+    }
+
+    function bucketRisk(b) {
+      if (!b || typeof b !== "object") return null;
+      const risk = b.risk_level;
+      if (risk == null || risk === "") return null;
+      return String(risk).toLowerCase();
+    }
+
+    function renderSparkline(items) {
+      const svg = document.getElementById("riskSparkline");
+      if (!svg) return;
+      const width = 600;
+      const height = 16;
+      if (!items.length) {
+        svg.innerHTML = '<rect x="0" y="0" width="' + width + '" height="' + height + '" fill="rgba(148,163,184,0.2)" />';
+        return;
+      }
+      const w = width / items.length;
+      const colors = { normal: "#22c55e", warning: "#f59e0b", notice: "#f59e0b", high: "#ef4444", alert: "#ef4444", escalated: "#ef4444" };
+      svg.innerHTML = items.map(function (b, i) {
+        const risk = bucketRisk(b);
+        const fill = risk ? (colors[String(risk).toLowerCase()] || "rgba(148,163,184,0.35)") : "rgba(148,163,184,0.15)";
+        return '<rect x="' + (i * w).toFixed(2) + '" y="0" width="' + w.toFixed(2) + '" height="' + height + '" fill="' + fill + '" />';
+      }).join("");
+    }
+
+    function pct(obj, key) {
+      if (!obj) return "--";
+      const v = obj[key];
+      return v == null ? "--" : Number(v).toFixed(0) + "%";
+    }
+
+    document.getElementById("printBtn").addEventListener("click", function () {
+      window.print();
+    });
+
+    async function loadReport() {
+      const status = document.getElementById("reportStatus");
+      const sid = qs("session_id");
+      const url = sid ? "/api/session/report?session_id=" + encodeURIComponent(sid) : "/api/session/report";
+      let data;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          status.textContent = res.status === 404
+            ? "No session report yet. Monitor for a few minutes, then try again."
+            : "Could not load the report (" + res.status + ").";
+          return;
+        }
+        data = await res.json();
+      } catch (err) {
+        status.textContent = "Connection error: " + err.message;
+        return;
+      }
+
+      const session = data.session || {};
+      const stats = data.stats || {};
+      const pctMap = stats.risk_level_pct || {};
+      const exposure = session.exposure_sec != null ? session.exposure_sec : stats.exposure_sec;
+      const started = session.started_at || stats.period_start;
+      const ended = session.ended_at || stats.period_end;
+      const reportSid = data.session_id || sid;
+
+      document.getElementById("reportMeta").textContent = [
+        reportSid || "current session",
+        started ? formatTime(started) : "",
+        ended ? "– " + formatTime(ended) : "",
+      ].filter(Boolean).join(" · ");
+
+      document.getElementById("pctNormal").textContent = pct(pctMap, "normal");
+      document.getElementById("pctWarning").textContent = pct(pctMap, "warning");
+      document.getElementById("pctHigh").textContent = pct(pctMap, "high");
+      document.getElementById("reportStatsLine").textContent =
+        (stats.reading_count != null ? stats.reading_count + " readings" : "") +
+        (stats.window_minutes != null ? " · " + stats.window_minutes + " min window" : "");
+      document.getElementById("reportExposure").textContent =
+        exposure != null ? formatClock(exposure) + " sitting" : "--";
+      document.getElementById("reportCorrected").textContent = stats.corrected_label || "";
+
+      let buckets = [];
+      try {
+        const tUrl = reportSid
+          ? "/api/session/timeline?minutes=10&session_id=" + encodeURIComponent(reportSid)
+          : "/api/session/timeline?minutes=10";
+        const tRes = await fetch(tUrl);
+        if (tRes.ok) buckets = sparklineBuckets(await tRes.json());
+      } catch (err) {
+        buckets = [];
+      }
+      renderSparkline(buckets);
+
+      function rangeText(obj, unit) {
+        if (!obj || typeof obj !== "object") return "--";
+        const avg = obj.avg != null ? Number(obj.avg).toFixed(1) : "--";
+        const min = obj.min != null ? Number(obj.min).toFixed(1) : "--";
+        const max = obj.max != null ? Number(obj.max).toFixed(1) : "--";
+        return "avg " + avg + " " + unit + " (min " + min + " · max " + max + ")";
+      }
+      const distLux = document.getElementById("reportDistLux");
+      if (distLux) {
+        distLux.textContent =
+          "Distance: " + rangeText(stats.distance_cm, "cm") +
+          " · Light: " + rangeText(stats.brightness_lux, "lux");
+      }
+
+      const insight = data.insight;
+      const advice = data.advice;
+      const box = document.getElementById("reportAdvice");
+      let html = "";
+      if (insight && insight.summary) {
+        html += '<div class="advice-summary">' + asMarkdown(insight.summary) + "</div>";
+        if (insight.model_name) {
+          html += '<p class="advice-meta">' + escapeHtml(insight.model_name) + "</p>";
+        }
+      }
+      if (advice && advice.summary) {
+        const recs = advice.recommendations || [];
+        html += '<div class="advice-summary">' + asMarkdown(advice.summary) + "</div>";
+        if (recs.length) {
+          html += "<ul class=\"advice-recs\">" + recs.map(function (r) {
+            return "<li>" + escapeHtml(r) + "</li>";
+          }).join("") + "</ul>";
+        }
+        if (advice.model_name) {
+          html += '<p class="advice-meta">' + escapeHtml(advice.model_name) + "</p>";
+        }
+      }
+      box.innerHTML = html || '<p class="empty">No saved insight for this session yet.</p>';
+
+      status.textContent = "";
+      if (qs("print") === "1") {
+        setTimeout(function () { window.print(); }, 400);
+      }
+    }
+
+    loadReport();
+  </script>
+</body>
+</html>

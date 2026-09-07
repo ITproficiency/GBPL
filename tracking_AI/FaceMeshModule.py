@@ -1,6 +1,7 @@
 import cv2 as cv
 import mediapipe as mp
 import os
+from pathlib import Path
 
 
 class FaceMeshGenerator:
@@ -91,7 +92,7 @@ def generate_face_mesh(video_path, resizing_factor, save_video=False, filename=N
             if not filename:
                 raise ValueError("Filename must be provided when save_video is True")
             
-            video_dir = r"D:\PyCharm\PyCharm_files\MEDIAPIPE\FACE_MESH\VIDEOS"
+            video_dir = str(Path(__file__).resolve().parent / "DATA" / "VIDEOS")
             if not os.path.exists(video_dir):
                 os.makedirs(video_dir)
                 

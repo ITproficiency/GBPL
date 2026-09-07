@@ -10,13 +10,28 @@
   },
   "light_adc": {
     "adc_max": 4095,
-    "v_cc": 3.3,
+    "adc_dark_floor": 10,
+    "adc_linear_max": 3599,
+    "adc_saturation": 3847,
     "r_fixed_ohm": 10000,
-    "gamma": 0.7,
-    "circuit": "ldr_to_vcc"
+    "circuit": "ldr_to_vcc",
+    "calibration": {
+      "low": {
+        "adc": 2048,
+        "lux": 10
+      },
+      "high": {
+        "adc": 3624,
+        "lux": 300
+      },
+      "source": "provisional - nominal GL5528 (R10=10k, gamma=0.6); not measured against a photometric reference"
+    }
   },
   "sitting_minutes": {
-    "max_continuous": 20
+    "max_continuous": 20,
+    "too_long_enabled": false,
+    "demo_max_minutes": 3,
+    "demo_mode": true
   },
   "presence": {
     "max_distance_cm": 120
@@ -29,38 +44,125 @@
     "pitch_down_max_deg": 5,
     "pitch_up_max_deg": 5,
     "pitch_forward_max_deg": 5,
-    "roll_max_deg": 10,
+    "roll_max_deg": 15,
     "yaw_max_deg": 20
   },
   "risk_level": {
     "warning_max_score": 2
   },
+  "session": {
+    "grace_sec": 20,
+    "face_lost_away_sec": 30,
+    "away_reset_exposure_sec": 180,
+    "idle_end_sec": 900,
+    "break_suggest_sec": 1200
+  },
+  "severity": {
+    "notice_hold_sec": 60,
+    "alert_too_close_sec": 60,
+    "danger_hold_sec": 15,
+    "escalate_sec": 300,
+    "danger_flags": [
+      "critically_close",
+      "head_too_low",
+      "head_too_high",
+      "head_tilted"
+    ],
+    "notice_only_flags": [
+      "head_turned",
+      "too_dark",
+      "low_blink_rate",
+      "too_far",
+      "too_bright"
+    ],
+    "too_close_flag": "too_close"
+  },
+  "governor": {
+    "backoff_sec": [
+      60,
+      180
+    ],
+    "snooze_sec": 600,
+    "normal_reset_sec": 120,
+    "corrected_watch_sec": 60
+  },
   "llm": {
-    "call_when": ["warning", "high"],
+    "call_when": [
+      "warning",
+      "high"
+    ],
     "analyze_cooldown_sec": 60
   },
   "insight": {
     "cooldown_sec": 60
   },
   "firebase_fields": {
-    "distance": ["distance_cm", "distance"],
-    "camera_distance": ["camera_distance_cm", "camera_distance", "ai_distance_cm"],
-    "ultrasonic_distance": ["ultrasonic_distance_cm", "ultrasonic_distance", "distance_cm", "distance"],
-    "light_adc": ["light_adc"],
-    "brightness": ["brightness_lux", "lux", "light", "brightness"],
-    "ear": ["ear"],
-    "blinks": ["blinks", "blink_counter"],
-    "blink_rate": ["blink_rate", "blink_rate_bpm", "blinks_per_minute"],
-    "head_pitch": ["head_pitch", "pitch", "head_pose_pitch"],
-    "head_roll": ["head_roll", "roll", "head_pose_roll"],
-    "head_yaw": ["head_yaw", "yaw", "head_pose_yaw"],
-    "posture_status": ["posture_status"],
-    "warnings": ["warnings"],
-    "device_id": ["device_id"],
-    "timestamp": ["timestamp"]
+    "distance": [
+      "distance_cm",
+      "distance"
+    ],
+    "camera_distance": [
+      "camera_distance_cm",
+      "camera_distance",
+      "ai_distance_cm"
+    ],
+    "ultrasonic_distance": [
+      "ultrasonic_distance_cm",
+      "ultrasonic_distance",
+      "distance_cm",
+      "distance"
+    ],
+    "light_adc": [
+      "light_adc"
+    ],
+    "brightness": [
+      "brightness_lux",
+      "lux",
+      "light",
+      "brightness"
+    ],
+    "ear": [
+      "ear"
+    ],
+    "blinks": [
+      "blinks",
+      "blink_counter"
+    ],
+    "blink_rate": [
+      "blink_rate",
+      "blink_rate_bpm",
+      "blinks_per_minute"
+    ],
+    "head_pitch": [
+      "head_pitch",
+      "pitch",
+      "head_pose_pitch"
+    ],
+    "head_roll": [
+      "head_roll",
+      "roll",
+      "head_pose_roll"
+    ],
+    "head_yaw": [
+      "head_yaw",
+      "yaw",
+      "head_pose_yaw"
+    ],
+    "posture_status": [
+      "posture_status"
+    ],
+    "warnings": [
+      "warnings"
+    ],
+    "device_id": [
+      "device_id"
+    ],
+    "timestamp": [
+      "timestamp"
+    ]
   },
   "llm_prompt": {
-    "system": "You are the AI recommendation module for \"PostureCare\", a low-cost IoT ergonomic risk-screening system for students, office workers, and remote workers.\n\nYou do not diagnose musculoskeletal disorders, Computer Vision Syndrome, or any disease — you explain the detected ergonomic condition in plain language and suggest practical adjustments, the way an ergonomics-aware colleague would.\n\nOutput format:\n- Context: Briefly explain why this combination of readings is a problem (not just restate the numbers) — e.g. \"You're sitting close to the screen while the room is dark, which compounds eye strain.\"\n- Advice: Short, actionable bullet points. Address distance, lighting, and movement/posture together when more than one factor is involved, rather than as separate unrelated tips.",
+    "system": "You are the AI recommendation module for \"PostureCare\", a low-cost IoT ergonomic risk-screening system for students, office workers, and remote workers.\n\nYou do not diagnose musculoskeletal disorders, Computer Vision Syndrome, or any disease — you explain the detected ergonomic condition in plain language and suggest practical adjustments, the way an ergonomics-aware colleague would.\n\nOutput format:\n- Context: Briefly explain why this combination of readings is a problem (not just restate the numbers) — e.g. \"You're sitting close to the screen while the room is dark, which compounds eye strain.\"\n- Advice: Short, actionable bullet points. Address distance, lighting, and movement/posture together when more than one factor is involved, rather than as separate unrelated tips.\n- Spoken: One short English action sentence the dashboard can read aloud (example: \"Move farther from the screen.\").",
     "distance_target": "50-70cm",
     "light_target": "300-500 lux"
   }

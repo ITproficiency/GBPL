@@ -1,0 +1,106 @@
+The system is built to support the evaluation described here, but that evaluation has \emph{not
+been carried out}. This section is written in the future tense throughout and states a protocol,
+not results. It is included because the design decisions in Section~\ref{sec:proposed_system} were
+made against these measurements, and because specifying them makes the boundary between what has
+been demonstrated and what remains unvalidated explicit.
+
+\subsection{Design}
+
+The evaluation separates into the four studies listed in Table~\ref{tab:studies}, which have different requirements. Combining them into a
+single protocol, as is common, would force sensor characterisation and behavioural observation into
+the same session even though the first needs no participants and the second needs unscripted work.
+
+\begin{table}[htbp]
+\centering
+\caption{Planned studies and what each answers}
+\label{tab:studies}
+\begin{tabular}{@{}llp{6.0cm}@{}}
+\toprule
+\textbf{Study} & \textbf{Participants} & \textbf{Answers} \\
+\midrule
+A --- Bench validation      & none              & Sensor accuracy and angular repeatability \\
+B --- Scripted conditions   & 8--10             & Detection performance, condition discrimination \\
+C --- Free use              & 6--8, 2 sessions  & Recommendation quality, correction behaviour \\
+D --- Replay ablation       & none (uses B, C logs) & Contribution of temporal qualification \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Study A: Bench Validation}
+
+Distance readings from both channels will be compared against a tape measure at fixed marks between
+$30$ and $90\,\text{cm}$, reporting mean absolute error and root-mean-square error per channel and
+the agreement between channels. Illuminance will be compared against a calibrated reference meter
+across a range of lighting conditions; if no reference instrument is available, the claim reduces
+to repeatability and to agreement with intended lighting categories, which is weaker but honest.
+
+Head orientation requires a different treatment. Because angles are expressed relative to a
+user-set zero (Section~\ref{subsec:vision}), there is no anatomical true value to be accurate
+against, and a mean absolute error against an anatomical reference would be meaningless. The
+measurable properties are \textbf{repeatability} --- the spread of reported angle across repeated
+returns to the same marked head position --- and \textbf{sensitivity} --- whether a known angular
+displacement $\Delta$ produces a reported change of $\Delta$. Both will be assessed against marked
+positions on a fixed rig.
+
+\subsection{Study B: Scripted Conditions}
+
+Participants will hold each of the six conditions in Table~\ref{tab:conditions} for a fixed interval.
+
+\begin{table}[htbp]
+\centering
+\caption{Experimental conditions}
+\label{tab:conditions}
+\begin{tabular}{@{}llp{6.6cm}@{}}
+\toprule
+\textbf{Condition} & \textbf{Scenario} & \textbf{Description} \\
+\midrule
+1 & Normal ergonomic condition & Appropriate posture, suitable distance, normal lighting \\
+2 & Close viewing distance     & Normal posture, intentionally reduced user-screen distance \\
+3 & Forward head posture       & Forward head position with otherwise normal conditions \\
+4 & Excessive neck flexion     & Head tilted downward beyond the neutral range \\
+5 & Low lighting               & Normal posture and distance under inadequate lighting \\
+6 & Combined risk condition    & Forward head, close distance, and poor lighting together \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Ground truth comes from the assigned condition and from manual annotation of recorded video, never
+from the system's own output. Reported metrics will be per-flag precision, recall and F1-score with
+a confusion matrix, and, for blink detection, precision and recall against frame-level annotation
+of a ten-minute segment per participant.
+
+Eight to ten participants is sufficient to populate a confusion matrix across six conditions with
+readable per-cell counts. It is not sufficient to claim generalisation across body size, eyewear,
+or skin tone, and that limitation will be stated rather than implied.
+
+\subsection{Study C: Free Use}
+
+Participants will work normally for a fixed period with the system active. Two measures follow.
+
+Recommendation quality will be rated on five-point Likert scales for relevance, clarity,
+usefulness, and actionability, collected on a form and joined to the session record by session
+identifier. To test whether the language model earns its dependency, the generative and
+deterministic paths will be alternated within participant and counterbalanced, holding the
+detection layer identical. A within-subject design is used deliberately: at these sample sizes a
+between-subjects comparison has no realistic power.
+
+Correction behaviour will be measured by the corrected-per-reminder ratio and time-to-correction
+per flag type, both already instrumented. The unit of analysis here is the \textbf{reminder, not
+the participant}: six to eight participants over two sessions each yields on the order of a hundred
+reminders, which is a usable denominator even though the participant count is small. Results will
+be reported descriptively; no claim of statistical significance will be made at this sample size.
+
+\subsection{Study D: Replay Ablation}
+
+Logs from Studies B and C will be replayed with the qualification layer disabled, isolating its
+contribution to interruption load on identical input. This requires no additional data collection
+and provides the comparison against a single-factor threshold baseline.
+
+\subsection{Ethics}
+
+The study involves continuous facial video and therefore requires informed consent covering: that
+frames are transmitted off the device for processing, how long recordings are retained and who can
+access them, that spoken audio prompts form part of the intervention, and the participant's right
+to end a session at any point. Since the system is a screening and behavioural-support tool rather
+than a diagnostic instrument, participants will be told explicitly that its output is not a health
+assessment.

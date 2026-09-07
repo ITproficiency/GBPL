@@ -1,0 +1,27 @@
+This paper presented PostureCare, an edge vision IoT--LLM framework for continuous ergonomic risk
+screening during computer use. The system combines a Freenove ESP32-S3 with an OV3660 camera, an
+ultrasonic rangefinder and a photoresistor, and fuses head orientation, blink rate, viewing
+distance, ambient illuminance and exposure duration into a single ergonomic state on low-cost,
+non-contact hardware.
+
+Its distinguishing element is what happens after detection. Rather than acting on instantaneous
+threshold crossings, the system qualifies each detection by how long it persists, classifies the
+qualified set into a four-tier severity model in which co-occurring mild conditions outrank isolated
+ones, and passes the result to a notification governor that bounds how often the user is interrupted
+through deduplication, exponential backoff, escalation with acknowledgement, and user-controlled
+suppression. A cloud language model operates within those bounds as an explanation layer, and each
+delivered reminder opens an observation window recording whether the condition cleared.
+
+The contribution is an architecture and its implementation. All components described here are
+built, and the design choices that constrain deployment --- a single configuration source, a single
+writer for user-facing state, and a deterministic fallback for the recommendation layer --- are
+recorded in Section~\ref{sec:implementation}. The system has not been evaluated: detection
+accuracy, sensor calibration, interruption load and behavioural effectiveness are all unmeasured,
+and a full protocol for establishing them is specified in Section~\ref{sec:protocol}.
+
+Executing that protocol is the immediate next step. Beyond it, three directions follow from the
+present design: separating severity per ergonomic dimension so that postural and visual conditions
+can be reasoned about independently; adding daily cumulative exposure so that the temporal variable
+connects to the epidemiological literature this work currently holds at arm's length; and moving
+inference on-device, which would remove the privacy cost the current architecture accepts in
+exchange for a richer landmark model.

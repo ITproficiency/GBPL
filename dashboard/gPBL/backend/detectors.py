@@ -93,7 +93,7 @@ def detect_head_pose(
     events: list[Event] = []
     pitch_down_max = cfg.get("pitch_down_max_deg", cfg.get("pitch_forward_max_deg", 5.0))
     pitch_up_max = cfg.get("pitch_up_max_deg", 5.0)
-    roll_max = cfg.get("roll_max_deg", 10.0)
+    roll_max = cfg.get("roll_max_deg", 15.0)
     yaw_max = cfg.get("yaw_max_deg", 20.0)
 
     if pitch is not None and pitch > pitch_down_max:
@@ -127,16 +127,19 @@ def detect_head_pose(
 
 
 def run_core_events(
-    distance_cm: float,
-    brightness_lux: float,
-    sitting_minutes: int,
+    distance_cm: float | None,
+    brightness_lux: float | None,
+    sitting_minutes: int | None,
     rules: dict,
 ) -> list[Event]:
-    events = [
-        detect_distance(distance_cm, rules["distance_cm"]),
-        detect_brightness(brightness_lux, rules["brightness_lux"]),
-        detect_sitting(sitting_minutes, rules["sitting_minutes"]),
-    ]
+    events = []
+    if distance_cm is not None:
+        events.append(detect_distance(distance_cm, rules["distance_cm"]))
+    if brightness_lux is not None:
+        events.append(detect_brightness(brightness_lux, rules["brightness_lux"]))
+    # too_long / detect_sitting is off: 20 min is a Wave 4 break suggestion,
+    # not a parallel flag that would compete with the governor.
+    del sitting_minutes
     return [e for e in events if e is not None]
 
 

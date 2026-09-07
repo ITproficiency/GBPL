@@ -17,7 +17,7 @@ import processing
 logger = logging.getLogger(__name__)
 
 _last_ts: str | None = None
-_last_led_state: bool | None = None
+_last_led_state: tuple | None = None
 
 
 async def _poll_once() -> None:
@@ -27,18 +27,39 @@ async def _poll_once() -> None:
     if reading is None:
         return
 
-    # Independent of the history dedupe below — the firmware needs this kept
-    # current, but only written when it actually flips (avoid spamming Firebase
-    # with an identical value every poll interval).
-    led_on = processing.should_light_led(reading["risk_level"])
-    if led_on != _last_led_state:
-        await asyncio.to_thread(firebase_client.push_led_state, led_on)
-        _last_led_state = led_on
+    posture_status = reading.get("posture_status", "GOOD")
+    risk_level = reading.get("risk_level", "normal")
+    warning_msgs = reading.get("warning_messages", [])
+
+    green_led = (posture_status == "GOOD")
+    red_led = (posture_status in ["WARNING", "DANGER"] or risk_level in ["warning", "high"])
+    buzzer = (posture_status == "DANGER")
+
+    current_led_tuple = (green_led, red_led, buzzer, posture_status)
+    if current_led_tuple != _last_led_state:
+        await asyncio.to_thread(
+            firebase_client.push_led_state,
+            green_led=green_led,
+            red_led=red_led,
+            buzzer=buzzer,
+            status=posture_status,
+            warning_messages=warning_msgs
+        )
+        _last_led_state = current_led_tuple
 
     if reading["timestamp"] == _last_ts:
         return
     _last_ts = reading["timestamp"]
     history_store.insert_reading(reading)
+
+    # Auto-generate & push AI advice when posture risk is elevated
+    if reading.get("llm_eligible", False):
+        try:
+            import llm_service
+            advice = llm_service.analyze_warning(reading)
+            await asyncio.to_thread(firebase_client.push_advice, advice, reading)
+        except Exception as err:
+            logger.warning("Auto AI advice push failed: %s", err)
 
 
 async def run_poller() -> None:

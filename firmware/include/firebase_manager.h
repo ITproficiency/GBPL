@@ -24,14 +24,17 @@ bool init_firebase();
 void upload_sensor_data_to_firebase(int light_adc, float lux, float distance);
 
 /**
- * Ensure the `led_state` schema exists in the Realtime Database.
- * Creates an object with `red` and `green` keys if missing.
+ * Ensure `/led_state` exists as `{red, green, blink}` (all false) if the node
+ * is missing. Leaves a legacy boolean node in place. Safe to call more than
+ * once; runs at most one successful ensure.
  */
 void ensure_led_schema();
 
 /**
- * Read `/led_state/red` from Firebase and apply it to the red alert LED.
- * This function only controls the red alert LED; the green LED remains off.
+ * Fetch `/led_state` from Firebase (object preferred, legacy boolean tolerated)
+ * and drive the red/green GPIOs. Blink is generated in firmware (~2 Hz) from
+ * a cached `blink` flag so it does not depend on the poller interval.
+ * Call every loop cycle; network reads are throttled internally.
  */
 void apply_led_state_from_firebase();
 

@@ -1,0 +1,66 @@
+\textbf{The system has not been evaluated.} No human-subjects study was conducted, and no
+end-to-end integration testing of the complete pipeline has been carried out. Detection accuracy,
+sensor calibration, interruption load, latency, and the effectiveness of the intervention layer are
+all unmeasured. The thresholds, hold times and severity rules in Table~\ref{tab:parameters} are
+design values chosen from published ergonomic guidance, not values validated against observation.
+This is the principal limitation, it bounds all the others, and it means the contribution of this
+paper is an architecture and its implementation rather than an empirical result.
+
+The remaining limitations fall into three groups.
+
+\subsection{Measurement}
+
+\begin{itemize}
+    \item \textbf{Head angles are relative, not anatomical.} Orientation is measured against a
+    user-set zero captured at calibration, so values express deviation from an individual's chosen
+    neutral rather than a cervical angle. The relationship between visible head posture and symptoms
+    is in any case not deterministic: Sarig Bahat et al. found no clinically applicable association
+    between forward-head posture and pain intensity~\cite{ref22}. Postural output should be read as
+    an exposure indicator, never as evidence of a disorder.
+    \item \textbf{A front-facing monocular camera cannot recover sagittal depth.} Forward-head
+    displacement, trunk flexion and slouching are excluded for this reason
+    (Table~\ref{tab:posture_variables_detail}), so the postural picture is partial by construction.
+    \item \textbf{The two distance channels reference different points.} Their agreement bounds
+    precision; it does not establish accuracy for either.
+    \item \textbf{Illuminance is derived, not measured.} The ADC-to-lux conversion is a modelled
+    curve over a photoresistor divider whose coefficients are nominal rather than fitted against a
+    photometric reference. Above the divider's saturation point the reading is censored --- reported
+    as a lower bound rather than a value. With the fixed resistor used here, the trustworthy ceiling
+    falls close to the lower edge of the target illuminance band, so ordinary desk lighting can push
+    the converter beyond its linear region.
+    \item \textbf{A single illuminance sensor cannot characterise lighting quality.} Glare,
+    reflections, light direction, screen luminance and colour temperature all matter for visual
+    comfort~\cite{ref7} and none are observed. Ambient light is a contextual variable only.
+    \item \textbf{Blink rate is not an independent diagnostic.} It varies with task demand and
+    cognitive load~\cite{ref11}, and is used here as a supporting indicator.
+\end{itemize}
+
+\subsection{Scope of Operation}
+
+\begin{itemize}
+    \item \textbf{Exposure is counted only while a face is detected}, so poor lighting or occlusion
+    cause under-counting in exactly the conditions the system exists to flag.
+    \item \textbf{Exposure is continuous, not cumulative.} The measured quantity is uninterrupted
+    desk time within a session and does not estimate daily sedentary load, so it cannot be compared
+    against the daily-duration odds ratios cited in Section~\ref{sec:litreview}.
+    \item \textbf{Thresholds and hold times are derived from published guidance and from
+    calibration, not from validation against ergonomic assessment by an expert.} They are plausible
+    defaults, not established cut-points.
+    \item \textbf{The recommendation layer degrades to fixed phrases} when the language model API is
+    unreachable, and generated and templated output are not equivalent.
+    \item \textbf{Camera placement, occlusion and lighting influence computer-vision
+    performance}~\cite{ref16}, and the streamed resolution is well below the sensor's capability.
+\end{itemize}
+
+\subsection{Deployment}
+
+\begin{itemize}
+    \item \textbf{Image data leaves the device.} Vision processing is performed off the
+    microcontroller, so any real deployment must address retention, access and transmission
+    security for facial video --- a requirement an on-device inference design would have avoided.
+    \item \textbf{No long-term adherence data.} Whether the governor's design actually prevents the
+    alert fatigue it is intended to prevent has not been observed over any meaningful period.
+    \item \textbf{The system provides ergonomic risk screening and behavioural support.} It does not
+    diagnose musculoskeletal disorders, Computer Vision Syndrome, or any other condition, and its
+    recommendations have not been reviewed by ergonomics or healthcare professionals.
+\end{itemize}

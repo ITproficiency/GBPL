@@ -1,5 +1,6 @@
 const POLL_MS = 3000;
 const chartPoints = [];
+let isManuallyStopped = false;
 
 const els = {
   distance: document.getElementById("distance"),
@@ -185,6 +186,25 @@ function renderSensor(data) {
   if (els.blinkRate) els.blinkRate.textContent = data.blink_rate_bpm != null ? data.blink_rate_bpm.toFixed(1) : "--";
   if (els.headPose) els.headPose.textContent = formatHeadPose(data.head_pitch_deg, data.head_roll_deg, data.head_yaw_deg);
 
+  // Auto-connect video feed if AI tracking is active when user opens web page
+  if (typeof cameraStreamImg !== "undefined" && !isBrowserWebcamActive && !isManuallyStopped) {
+    const hasAIData = data.head_pitch_deg !== undefined || data.ear !== undefined || data.camera_distance_cm !== undefined;
+    if (hasAIData) {
+      if (!cameraStreamImg.src || !cameraStreamImg.src.includes("/api/video_feed")) {
+        cameraStreamImg.src = "/api/video_feed?" + Date.now();
+      }
+      cameraStreamImg.style.display = "block";
+      if (typeof camFallbackOverlay !== "undefined") camFallbackOverlay.style.display = "none";
+      if (typeof cameraStatus !== "undefined" && cameraStatus.textContent !== "ESP32 STREAM") {
+        cameraStatus.textContent = "ESP32 STREAM";
+        cameraStatus.style.color = "#60a5fa";
+      }
+      if (currentTrackingState !== "running") {
+        updateAIStatusUI("running", "ESP32-CAM");
+      }
+    }
+  }
+
   // Head Pose & Rotation Angle Telemetry
   const th = data.head_pose_thresholds || {
     pitch_down_max_deg: 5.0,
@@ -266,6 +286,16 @@ function renderSensor(data) {
   if (els.headerRiskPill) {
     els.headerRiskPill.textContent = data.risk_level.toUpperCase();
     els.headerRiskPill.className = "risk-pill risk-" + data.risk_level;
+  }
+
+  // Update Green & Red LED Warning Badge
+  const ledDotGreen = document.getElementById("ledDotGreen");
+  const ledStatusText = document.getElementById("ledStatusText");
+  if (ledDotGreen && ledStatusText) {
+    const isGood = data.posture_status === "GOOD";
+    ledDotGreen.className = "led-dot " + (isGood ? "green" : "red");
+    ledStatusText.textContent = isGood ? "Green LED ON" : "Red LED ALERT!";
+    ledStatusText.style.color = isGood ? "#10b981" : "#ef4444";
   }
 
   const msgs = (data.warning_messages || []).filter(m => m && !m.includes("PostureCare targets"));
@@ -465,42 +495,84 @@ let isBrowserWebcamActive = false;
 let webcamStream = null;
 
 if (cameraStreamImg) {
-  cameraStreamImg.onerror = () => {
-    if (!isBrowserWebcamActive && camFallbackOverlay) {
-      camFallbackOverlay.style.display = "flex";
-      if (cameraStatus) {
-        cameraStatus.textContent = "OFFLINE";
-        cameraStatus.style.color = "#f87171";
-      }
-    }
-  };
   cameraStreamImg.onload = () => {
-    if (camFallbackOverlay) camFallbackOverlay.style.display = "none";
-    if (cameraStatus) {
+    if (camFallbackOverlay && !isBrowserWebcamActive) {
+      camFallbackOverlay.style.display = "none";
+    }
+    if (cameraStatus && !isBrowserWebcamActive) {
       cameraStatus.textContent = "ESP32 STREAM";
       cameraStatus.style.color = "#60a5fa";
     }
   };
+  cameraStreamImg.onerror = () => {
+    if (!isBrowserWebcamActive && currentTrackingState === "failed") {
+      if (camFallbackOverlay) {
+        camFallbackOverlay.style.display = "flex";
+        camFallbackOverlay.innerHTML = `
+          <p style="color:#f87171; font-weight: 600; font-size: 14px; margin-bottom: 6px;">⚠️ Không thể kết nối tới luồng ESP32-CAM</p>
+          <small style="color:#cbd5e1; font-size: 12px; line-height: 1.5; display: block; max-width: 480px;">
+            Vui lòng kiểm tra: <br/>
+            1️⃣ ESP32-S3 đã được cấp nguồn điện chưa. <br/>
+            2️⃣ Máy tính và ESP32-S3 có đang bắt <strong>CÙNG 1 MẠNG WI-FI</strong> không. <br/>
+            3️⃣ Cú pháp địa chỉ IP đã đúng chưa (vd: <code>http://192.168.1.15:81/stream</code>).
+          </small>
+        `;
+      }
+      if (cameraStatus) {
+        cameraStatus.textContent = "OFFLINE / UNREACHABLE";
+        cameraStatus.style.color = "#f87171";
+      }
+      updateAIStatusUI("failed");
+    }
+  };
 }
+
+let currentTrackingState = "idle";
+let currentTrackingSource = "None";
 
 const aiStatusDot = document.getElementById("aiStatusDot");
 const aiStatusText = document.getElementById("aiStatusText");
 const aiSourceBadge = document.getElementById("aiSourceBadge");
 
-function updateAIStatusUI(active, sourceLabel) {
+function updateAIStatusUI(state, sourceLabel) {
+  currentTrackingState = state;
+  if (sourceLabel) currentTrackingSource = sourceLabel;
+
   if (aiStatusDot) {
-    aiStatusDot.style.background = active ? "#34d399" : "#94a3b8";
-    aiStatusDot.style.boxShadow = active ? "0 0 10px #34d399" : "none";
+    if (state === "running") {
+      aiStatusDot.style.background = "#34d399";
+      aiStatusDot.style.boxShadow = "0 0 10px #34d399";
+    } else if (state === "connecting") {
+      aiStatusDot.style.background = "#f59e0b";
+      aiStatusDot.style.boxShadow = "0 0 10px #f59e0b";
+    } else if (state === "failed") {
+      aiStatusDot.style.background = "#f87171";
+      aiStatusDot.style.boxShadow = "0 0 10px #f87171";
+    } else {
+      aiStatusDot.style.background = "#94a3b8";
+      aiStatusDot.style.boxShadow = "none";
+    }
   }
+
   if (aiStatusText) {
-    aiStatusText.textContent = active 
-      ? `🟢 AI Tracking Engine: ACTIVE & RUNNING` 
-      : "⚪ AI Tracking Engine: IDLE / STOPPED";
-    aiStatusText.style.color = active ? "#34d399" : "#cbd5e1";
+    if (state === "running") {
+      aiStatusText.textContent = "🟢 AI Tracking Engine: ACTIVE & RUNNING";
+      aiStatusText.style.color = "#34d399";
+    } else if (state === "connecting") {
+      aiStatusText.textContent = "🟡 AI Tracking Engine: INITIALIZING / CONNECTING...";
+      aiStatusText.style.color = "#f59e0b";
+    } else if (state === "failed") {
+      aiStatusText.textContent = "🔴 AI Tracking Engine: CONNECTION FAILED (Check ESP32 IP / Power)";
+      aiStatusText.style.color = "#f87171";
+    } else {
+      aiStatusText.textContent = "⚪ AI Tracking Engine: IDLE / STOPPED";
+      aiStatusText.style.color = "#cbd5e1";
+    }
   }
+
   if (aiSourceBadge) {
-    aiSourceBadge.textContent = active ? `📷 Source: ${sourceLabel}` : "Source: None";
-    aiSourceBadge.style.color = active ? "#60a5fa" : "#94a3b8";
+    aiSourceBadge.textContent = state !== "idle" ? `📷 Source: ${currentTrackingSource}` : "Source: None";
+    aiSourceBadge.style.color = state === "running" ? "#60a5fa" : (state === "connecting" ? "#f59e0b" : "#94a3b8");
   }
 }
 
@@ -522,7 +594,7 @@ function resetTrackingState() {
   if (els.alertList) {
     els.alertList.innerHTML = '<li class="empty">All readings within PostureCare targets</li>';
   }
-  updateAIStatusUI(false, "None");
+  updateAIStatusUI("idle", "None");
   if (typeof ocularChart !== "undefined") {
     ocularChart.data.labels = [];
     ocularChart.data.datasets[0].data = [];
@@ -539,27 +611,38 @@ function resetTrackingState() {
 
 if (connectCamBtn) {
   connectCamBtn.addEventListener("click", async () => {
+    isManuallyStopped = false;
     if (isBrowserWebcamActive) stopBrowserWebcam();
     resetTrackingState();
-    const url = streamUrlInput ? streamUrlInput.value.trim() : "http://172.20.10.3:81/stream";
-    if (url && cameraStreamImg) {
+    const url = streamUrlInput ? streamUrlInput.value.trim() : "";
+    if (!url) {
+      alert("Vui lòng nhập địa chỉ IP của ESP32 Camera (ví dụ: http://192.168.1.50:81/stream)");
+      return;
+    }
+    if (cameraStreamImg) {
       cameraStreamImg.style.display = "block";
-      cameraStreamImg.src = url;
       if (camFallbackOverlay) camFallbackOverlay.style.display = "none";
       if (cameraStatus) {
         cameraStatus.textContent = "ESP32 STREAM";
         cameraStatus.style.color = "#60a5fa";
       }
-      updateAIStatusUI(true, "ESP32-CAM (" + url.replace("http://", "") + ")");
+      updateAIStatusUI("connecting", "ESP32-CAM (" + url.replace("http://", "") + ")");
       try {
         await fetch("/api/tracking/stop", { method: "POST" });
-        await fetch("/api/tracking/start", {
+        const res = await fetch("/api/tracking/start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ source: url }),
         });
+        const data = await res.json();
+        if (data.status === "ok") {
+          cameraStreamImg.src = "/api/video_feed?" + Date.now();
+        } else {
+          updateAIStatusUI("failed", "ESP32-CAM (" + url.replace("http://", "") + ")");
+        }
       } catch (e) {
         console.error("Failed to start tracking:", e);
+        updateAIStatusUI("failed", "ESP32-CAM (" + url.replace("http://", "") + ")");
       }
     }
   });
@@ -576,50 +659,53 @@ function stopBrowserWebcam() {
 
 if (toggleWebcamBtn) {
   toggleWebcamBtn.addEventListener("click", async () => {
+    isManuallyStopped = false;
     resetTrackingState();
     try { await fetch("/api/tracking/stop", { method: "POST" }); } catch (e) {}
     if (isBrowserWebcamActive) {
-      stopBrowserWebcam();
-      if (cameraStreamImg) cameraStreamImg.style.display = "block";
-      toggleWebcamBtn.textContent = "Use Browser Webcam";
+      isBrowserWebcamActive = false;
+      toggleWebcamBtn.textContent = "Use Local Webcam";
+      const url = streamUrlInput ? streamUrlInput.value.trim() : "http://192.168.1.39:80/stream";
+      updateAIStatusUI("connecting", "ESP32-CAM (" + url.replace("http://", "") + ")");
       if (cameraStatus) {
         cameraStatus.textContent = "ESP32 STREAM";
         cameraStatus.style.color = "#60a5fa";
       }
-      // Restart tracking with ESP32 stream
-      const url = streamUrlInput ? streamUrlInput.value.trim() : "http://172.20.10.3:81/stream";
-      updateAIStatusUI(true, "ESP32-CAM (" + url.replace("http://", "") + ")");
       try {
         await fetch("/api/tracking/start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ source: url }),
         });
+        if (cameraStreamImg) {
+          cameraStreamImg.src = "/api/video_feed?" + Date.now();
+          cameraStreamImg.style.display = "block";
+        }
       } catch (e) {}
     } else {
+      isBrowserWebcamActive = true;
+      toggleWebcamBtn.textContent = "Switch to ESP32 Stream";
+      if (cameraStatus) {
+        cameraStatus.textContent = "LOCAL WEBCAM (DEVICE 0)";
+        cameraStatus.style.color = "#34d399";
+      }
+      updateAIStatusUI("connecting", "Local Webcam (Device 0)");
       try {
-        webcamStream = await navigator.mediaDevices.getUserMedia({ video: true });
-        if (browserWebcamVideo) {
-          browserWebcamVideo.srcObject = webcamStream;
-          browserWebcamVideo.style.display = "block";
-        }
-        if (cameraStreamImg) cameraStreamImg.style.display = "none";
-        if (camFallbackOverlay) camFallbackOverlay.style.display = "none";
-        isBrowserWebcamActive = true;
-        toggleWebcamBtn.textContent = "Switch to ESP32 Stream";
-        if (cameraStatus) {
-          cameraStatus.textContent = "BROWSER WEBCAM";
-          cameraStatus.style.color = "#34d399";
-        }
-        updateAIStatusUI(true, "Browser Webcam (Device 0)");
-        // Start Python AI Tracking process for Browser Webcam (source 0)
-        await fetch("/api/tracking/start", {
+        const res = await fetch("/api/tracking/start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ source: "0" }),
         });
+        const data = await res.json();
+        if (data.status === "ok" && cameraStreamImg) {
+          cameraStreamImg.src = "/api/video_feed?" + Date.now();
+          cameraStreamImg.style.display = "block";
+          if (camFallbackOverlay) camFallbackOverlay.style.display = "none";
+          updateAIStatusUI("running", "Local Webcam (Device 0)");
+        }
       } catch (err) {
-        alert("Could not access browser webcam: " + err.message);
+        alert("Could not start local webcam tracking: " + err.message);
+        updateAIStatusUI("failed", "Local Webcam (Device 0)");
       }
     }
   });
@@ -628,6 +714,7 @@ if (toggleWebcamBtn) {
 const stopCamBtn = document.getElementById("stopCamBtn");
 if (stopCamBtn) {
   stopCamBtn.addEventListener("click", async () => {
+    isManuallyStopped = true;
     stopBrowserWebcam();
     resetTrackingState();
     if (cameraStreamImg) {
@@ -640,7 +727,7 @@ if (stopCamBtn) {
       cameraStatus.style.color = "#f87171";
     }
     if (toggleWebcamBtn) toggleWebcamBtn.textContent = "Use Browser Webcam";
-    updateAIStatusUI(false, "None");
+    updateAIStatusUI("idle", "None");
     // Stop Python AI Tracking process
     try { await fetch("/api/tracking/stop", { method: "POST" }); } catch (e) {}
   });
